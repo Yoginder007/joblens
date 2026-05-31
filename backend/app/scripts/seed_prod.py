@@ -12,7 +12,7 @@ from sqlalchemy import func, select
 from app.core.database import SessionLocal
 from app.domains.ingestion.scrapers import CAREER_PAGES, run_scraper_for_company
 from app.domains.ingestion.service import IngestionService
-from app.domains.jobs.models import Job
+from app.db.base import Job
 from app.domains.jobs.schemas import JobCreate
 
 logger = logging.getLogger(__name__)

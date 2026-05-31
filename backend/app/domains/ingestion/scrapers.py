@@ -118,7 +118,19 @@ def extract_board_token(career_url: str) -> str | None:
 def extract_job_id_from_url(job_url: str) -> str | None:
     if not job_url:
         return None
-    path = urlparse(job_url).path.rstrip("/")
+    parsed = urlparse(job_url)
+    
+    # 1. Check query parameters first (e.g. Stripe, Databricks ?gh_jid=...)
+    from urllib.parse import parse_qs
+    if parsed.query:
+        params = parse_qs(parsed.query)
+        for key, vals in params.items():
+            for val in vals:
+                if val.isdigit() or re.fullmatch(r"[0-9a-f]{8}-[0-9a-f-]{20,}", val):
+                    return val
+
+    # 2. Check path segments
+    path = parsed.path.rstrip("/")
     if not path:
         return None
     segments = [p for p in path.split("/") if p]
