@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Subscriptions = a candidate's standing intent to receive new matching jobs.
 
