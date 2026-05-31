@@ -82,7 +82,15 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         if self.DATABASE_URL:
-            return self.DATABASE_URL
+            url = self.DATABASE_URL
+            # Managed Postgres providers (Neon, Render, Heroku) hand out
+            # "postgres://" or "postgresql://" URLs; SQLAlchemy needs the
+            # psycopg2 driver spelled out. Normalise so a pasted URL just works.
+            if url.startswith("postgres://"):
+                url = "postgresql+psycopg2://" + url[len("postgres://"):]
+            elif url.startswith("postgresql://"):
+                url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+            return url
         return (
             f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}"
             f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
@@ -107,7 +115,9 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "SCRAPER_API_KEY must be set to a non-default value in production"
                 )
-            if self.DB_PASSWORD == "postgres":
+            # Only enforce DB_PASSWORD when the discrete DB_* vars are actually
+            # in use; a managed DATABASE_URL (Neon/Render) carries its own creds.
+            if not self.DATABASE_URL and self.DB_PASSWORD == "postgres":
                 raise ValueError("DB_PASSWORD must be changed in production")
         if abs((self.SEMANTIC_WEIGHT + self.SKILL_WEIGHT) - 1.0) > 1e-6:
             raise ValueError("SEMANTIC_WEIGHT + SKILL_WEIGHT must sum to 1.0")

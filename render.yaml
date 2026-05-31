@@ -1,0 +1,44 @@
+# Render Blueprint for the JobLens API (free tier).
+#
+# DB: use Neon (free Postgres + pgvector) and paste its connection string into
+# DATABASE_URL below in the Render dashboard — Render's own free Postgres does
+# NOT support the pgvector extension.
+#
+# Memory: free instances have 512 MB, so we run EMBEDDING_PROVIDER=deterministic
+# (no torch) and CELERY_TASK_ALWAYS_EAGER=true (no separate worker/Redis).
+services:
+  - type: web
+    name: joblens-api
+    runtime: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: bash start_prod.sh
+    healthCheckPath: /api/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: EMBEDDING_PROVIDER
+        value: deterministic
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "true"
+      - key: VERIFY_JOB_URLS
+        value: "false"            # free dynos cold-start; skip live HEAD checks
+      - key: UPLOAD_DIR
+        value: /tmp/uploads        # free tier has only ephemeral disk
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # ── Set these in the dashboard (Secret) ─────────────────────────────
+      - key: DATABASE_URL
+        sync: false                # Neon connection string (postgresql+psycopg2://…)
+      - key: SCRAPER_API_KEY
+        sync: false                # any strong random string
+      - key: CORS_ORIGINS
+        sync: false                # https://<your-vercel-app>.vercel.app
+      - key: ADZUNA_APP_ID
+        sync: false
+      - key: ADZUNA_APP_KEY
+        sync: false
+      - key: ADZUNA_COUNTRY
+        value: in
