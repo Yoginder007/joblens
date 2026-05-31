@@ -1,0 +1,18 @@
+# CI / test dependencies: the full committed stack EXCEPT sentence-transformers
+# (tests run with EMBEDDING_PROVIDER=deterministic, so no torch download needed).
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+email-validator==2.2.0
+pydantic==2.10.5
+pydantic-settings==2.7.1
+SQLAlchemy==2.0.37
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+alembic==1.14.1
+celery[redis]==5.4.0
+redis==5.2.1
+numpy==2.2.2
+pdfplumber==0.11.5
+httpx==0.28.1
+pytest==8.3.4

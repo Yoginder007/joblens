@@ -1,0 +1,109 @@
+# =============================================================================
+# Docker Compose — Job Aggregator Full Stack
+#
+# Services:
+#   api      — FastAPI served by uvicorn
+#   worker   — Celery worker processing background tasks
+#   postgres — pgvector-enabled PostgreSQL 16
+#   redis    — Message broker + result backend
+#
+# Usage:
+#   docker-compose up --build -d
+#   docker-compose logs -f api worker
+# =============================================================================
+
+services:
+
+  # ── FastAPI Application ──────────────────────────────────────────────────
+  api:
+    build: .
+    container_name: job-api
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
+    ports:
+      - "8000:8000"
+    env_file: backend/.env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - upload_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Celery Worker ────────────────────────────────────────────────────────
+  worker:
+    build: .
+    container_name: job-worker
+    command: celery -A app.workers.celery_app:celery_app worker --loglevel=info --concurrency=2
+    env_file: backend/.env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - upload_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Celery Beat (scheduled alerts + maintenance) ─────────────────────────
+  beat:
+    build: .
+    container_name: job-beat
+    command: celery -A app.workers.celery_app:celery_app beat --loglevel=info
+    env_file: backend/.env
+    environment:
+      - DB_HOST=postgres
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── PostgreSQL with pgvector ─────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: job-postgres
+    environment:
+      POSTGRES_DB: job_matching_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d job_matching_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: job-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pg_data:
+    driver: local
+  redis_data:
+    driver: local
+  upload_data:
+    driver: local

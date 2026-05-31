@@ -1,0 +1,55 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# JobLens — root .gitignore
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env.local
+
+# Databases (local SQLite dev) + WAL sidecar files
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Uploaded résumés (PII — never commit the files, keep the empty dir)
+backend/uploads/*
+!backend/uploads/.gitkeep
+/data/uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.turbo/
+
+# Build / dist
+dist/
+build/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
+
+# Keep these (negate): example envs ARE committed
+!.env.example
+!backend/.env.example

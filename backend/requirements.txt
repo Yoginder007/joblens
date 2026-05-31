@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Single committed stack: FastAPI + Postgres/pgvector + Celery/Redis.
+# Local dev runs the exact same stack via docker-compose (no SQLite path).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Web
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+email-validator==2.2.0
+
+# Settings / validation
+pydantic==2.10.5
+pydantic-settings==2.7.1
+
+# Database
+SQLAlchemy==2.0.37
+psycopg2-binary==2.9.10
+pgvector==0.3.6
+alembic==1.14.1
+
+# Background workers
+celery[redis]==5.4.0
+redis==5.2.1
+
+# Domain logic
+numpy==2.2.2
+pdfplumber==0.11.5
+httpx==0.28.1
+
+# ML embeddings — only needed when EMBEDDING_PROVIDER=sentence-transformers.
+# Heavy (pulls in torch). For tests/CI set EMBEDDING_PROVIDER=deterministic
+# and skip installing this line.
+sentence-transformers==3.3.1
+
+# Tests
+pytest==8.3.4

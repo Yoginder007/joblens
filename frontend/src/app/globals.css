@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* fg / bg are theme-flipping tokens. Translucent surfaces, borders and text all
+   reference them, so `text-fg/40`, `bg-fg/[0.04]`, `border-fg/10` adapt to the
+   active theme automatically (Tailwind v4 applies alpha via color-mix). */
+@theme {
+  --color-fg: var(--fg);
+  --color-bg: var(--bg);
+  --color-accent-from: var(--accent-from);
+  --color-accent-via: var(--accent-via);
+  --color-accent-to: var(--accent-to);
+}
+
+@layer base {
+  :root {
+    /* Light "bright aurora" */
+    --bg: #f5f6fc;
+    --fg: #1a1f36;
+    --accent-from: #6366f1;
+    --accent-via: #8b5cf6;
+    --accent-to: #d946ef;
+    /* Denser glass + stronger veil so the aurora can't bleed through cards
+       and wash out text in light mode. */
+    --glass-bg: rgba(255, 255, 255, 0.82);
+    --glass-bg-hover: rgba(255, 255, 255, 0.92);
+    --glass-border: rgba(20, 24, 60, 0.12);
+    --glass-shadow: 0 16px 40px -24px rgba(70, 60, 120, 0.3);
+    --glass-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.7);
+    --veil: rgba(245, 246, 252, 0.55);
+    --blob-opacity: 0.3;
+    /* Popovers/menus need a near-opaque surface so options stay readable. */
+    --popover-bg: #ffffff;
+    --popover-border: rgba(20, 24, 60, 0.14);
+  }
+  .dark {
+    /* Dark aurora */
+    --bg: #05060f;
+    --fg: #e6e9f5;
+    --accent-from: #6366f1;
+    --accent-via: #8b5cf6;
+    --accent-to: #d946ef;
+    --glass-bg: rgba(255, 255, 255, 0.035);
+    --glass-bg-hover: rgba(255, 255, 255, 0.055);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 16px 40px -24px rgba(0, 0, 0, 0.7);
+    --glass-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    --veil: rgba(5, 6, 15, 0.4);
+    --blob-opacity: 0.5;
+    --popover-bg: #11131f;
+    --popover-border: rgba(255, 255, 255, 0.12);
+  }
+  html { color-scheme: light dark; }
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    overflow-x: hidden;
+    transition: background-color 0.4s ease, color 0.4s ease;
+  }
+}
+
+/* ─── Glass surfaces (theme-aware) ───────────────────────────────────────────*/
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+}
+.glass-strong {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(28px) saturate(160%);
+  -webkit-backdrop-filter: blur(28px) saturate(160%);
+  box-shadow: var(--glass-inset), var(--glass-shadow);
+}
+/* Opaque surface for dropdown menus / popovers — options must stay readable
+   and never let the aurora bleed through. */
+.glass-popover {
+  background: var(--popover-bg);
+  border: 1px solid var(--popover-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.45);
+}
+/* Sticky header once scrolled — near-opaque so page content can't bleed
+   through the bar. */
+.header-solid {
+  background: var(--popover-bg);
+  border-bottom: 1px solid var(--popover-border);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow: 0 8px 30px -12px rgba(0, 0, 0, 0.4);
+}
+.glass-hover {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease, background 0.3s ease;
+}
+.glass-hover:hover {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: var(--glass-bg-hover);
+  box-shadow: var(--glass-inset), 0 28px 80px -28px rgba(99, 102, 241, 0.45);
+}
+
+/* ─── Form controls (theme-aware) ────────────────────────────────────────────*/
+.input-glass {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  color: var(--fg);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+}
+.input-glass::placeholder { color: color-mix(in srgb, var(--fg) 35%, transparent); }
+.input-glass:focus {
+  outline: none;
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+.select-glass {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--fg);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  appearance: none;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.select-glass:focus { outline: none; border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18); }
+.select-glass option { background: var(--bg); color: var(--fg); }
+
+/* ─── Accent gradients ───────────────────────────────────────────────────────*/
+.text-gradient {
+  background-image: linear-gradient(110deg, var(--accent-from), var(--accent-via) 45%, var(--accent-to));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-gradient-animate {
+  background-image: linear-gradient(110deg, var(--accent-from), var(--accent-via), var(--accent-to), var(--accent-from));
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradientPan 8s linear infinite;
+}
+.bg-accent {
+  background-image: linear-gradient(110deg, var(--accent-from), var(--accent-via) 50%, var(--accent-to));
+}
+/* Text that sits on a solid accent background stays white in both themes. */
+.on-accent, .on-accent * { color: #fff; }
+.ring-accent {
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.4), 0 0 24px -4px rgba(139, 92, 246, 0.5);
+}
+
+/* ─── Aurora background layer ────────────────────────────────────────────────*/
+.aurora-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: var(--blob-opacity);
+  will-change: transform;
+}
+.aurora-veil { position: absolute; inset: 0; background: var(--veil); }
+.grid-overlay {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--fg) 4%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--fg) 4%, transparent) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black, transparent 75%);
+}
+/* Subtle film grain for organic depth (SVG fractal noise, no asset needed). */
+.noise-overlay {
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ─── Keyframes ──────────────────────────────────────────────────────────────*/
+@keyframes gradientPan { to { background-position: 300% 0; } }
+@keyframes auroraDrift1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(8vw, 6vh) scale(1.15); }
+  66% { transform: translate(-6vw, 10vh) scale(0.95); }
+}
+@keyframes auroraDrift2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-10vw, -8vh) scale(1.2); }
+}
+@keyframes auroraDrift3 {
+  0%, 100% { transform: translate(0, 0) scale(1.05); }
+  50% { transform: translate(7vw, -6vh) scale(0.9); }
+}
+@keyframes pulseGlow { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.75; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.animate-aurora-1 { animation: auroraDrift1 28s ease-in-out infinite; }
+.animate-aurora-2 { animation: auroraDrift2 34s ease-in-out infinite; }
+.animate-aurora-3 { animation: auroraDrift3 30s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulseGlow 6s ease-in-out infinite; }
+.animate-float { animation: floatY 4s ease-in-out infinite; }
+.animate-fade-in { animation: fadeIn 0.4s ease-out; }
+
+/* Shimmer skeleton */
+.shimmer { position: relative; overflow: hidden; background: color-mix(in srgb, var(--fg) 4%, transparent); }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.12), transparent);
+  animation: shimmer 1.6s infinite;
+}
+
+/* ─── Scrollbar / selection / range ──────────────────────────────────────────*/
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(99,102,241,0.5), rgba(217,70,239,0.5));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(99,102,241,0.8), rgba(217,70,239,0.8));
+}
+::selection { background-color: rgba(139, 92, 246, 0.35); color: #fff; }
+
+input[type="range"] { accent-color: #8b5cf6; }
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #d946ef);
+  cursor: pointer; box-shadow: 0 0 12px rgba(139, 92, 246, 0.7);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%; border: none;
+  background: linear-gradient(135deg, #6366f1, #d946ef);
+  cursor: pointer; box-shadow: 0 0 12px rgba(139, 92, 246, 0.7);
+}
+
+/* ─── Respect reduced motion ─────────────────────────────────────────────────*/
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

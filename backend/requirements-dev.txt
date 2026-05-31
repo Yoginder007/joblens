@@ -1,0 +1,14 @@
+# Local dev deps — SQLite + in-process Celery + deterministic embeddings.
+# No Postgres driver, pgvector, Redis, torch, or Alembic needed.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+email-validator>=2.2
+pydantic>=2.9
+pydantic-settings>=2.5
+SQLAlchemy>=2.0.30
+numpy>=2.0
+pdfplumber>=0.11
+httpx>=0.27
+celery>=5.4
+pytest>=8.0
