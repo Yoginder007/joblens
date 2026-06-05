@@ -50,6 +50,12 @@ Thumbs.db
 .idea/
 *.log
 
+# Local-only assistant/config notes (not part of the project)
+CLAUDE.md
+AGENTS.md
+**/CLAUDE.md
+**/AGENTS.md
+
 # Keep these (negate): example envs ARE committed
 !.env.example
 !backend/.env.example
