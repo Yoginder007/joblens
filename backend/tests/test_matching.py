@@ -22,8 +22,9 @@ def test_skill_overlap_scoring():
     )
     assert res.hard_filter_passed is True
     assert round(res.skill_match_percentage) == 67  # 2 of 3
+    # Matched skills are reported with canonical display names.
     found = {s["skill"] for s in res.matched_skills if s["found_in_resume"]}
-    assert found == {"python", "aws"}
+    assert found == {"Python", "AWS"}
 
 
 def test_no_required_skills_is_perfect_overlap():

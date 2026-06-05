@@ -29,6 +29,7 @@ from app.domains.matching.schemas import (
 )
 from app.domains.resumes.models import Resume
 from app.services.embedding import cosine_similarity
+from app.services.skills import display_name, normalize_skill, normalize_skills
 
 logger = logging.getLogger(__name__)
 
@@ -83,26 +84,38 @@ def calculate_match(
     else:
         result.semantic_similarity = 50.0  # neutral fallback when embeddings pending
 
-    # ── Pass 2b: skill overlap ──
+    # ── Pass 2b: skill overlap (alias-aware) ──
+    # Normalize both sides to canonical tokens so "JS"/"javascript" or
+    # "k8s"/"kubernetes" count as the same skill.
     resume_skills: set[str] = set()
     for cat in resume_data.get("technical_skills", []) or []:
         if isinstance(cat, dict):
-            resume_skills.update(s.lower() for s in cat.get("skills", []))
+            resume_skills |= normalize_skills(cat.get("skills", []))
         elif isinstance(cat, str):
-            resume_skills.add(cat.lower())
+            resume_skills.add(normalize_skill(cat))
 
-    job_skills_lower = [s.lower() for s in job_skills]
-    matched = [s for s in job_skills_lower if s in resume_skills]
+    # Preserve the job's required-skill order while deduping by canonical token.
+    job_canon: list[str] = []
+    seen: set[str] = set()
+    for s in job_skills:
+        c = normalize_skill(s)
+        if c not in seen:
+            seen.add(c)
+            job_canon.append(c)
+
+    matched = [c for c in job_canon if c in resume_skills]
+    missing = [c for c in job_canon if c not in resume_skills]
     result.skill_match_percentage = (
-        len(matched) / len(job_skills_lower) * 100 if job_skills_lower else 100.0
+        len(matched) / len(job_canon) * 100 if job_canon else 100.0
     )
 
     result.matched_skills = [
-        {"skill": s, "found_in_resume": True, "required": True} for s in matched
+        {"skill": display_name(c), "found_in_resume": True, "required": True}
+        for c in matched
     ]
     result.matched_skills.extend(
-        {"skill": s, "found_in_resume": False, "required": True}
-        for s in set(job_skills_lower) - set(matched)
+        {"skill": display_name(c), "found_in_resume": False, "required": True}
+        for c in missing
     )
 
     # ── Final weighted score ──
@@ -110,10 +123,27 @@ def calculate_match(
         result.semantic_similarity * settings.SEMANTIC_WEIGHT
         + result.skill_match_percentage * settings.SKILL_WEIGHT
     )
+
+    # ── Explainability: a plain-English "why this matched" line ──
+    if not job_canon:
+        skills_note = "no specific skills required"
+    elif matched and missing:
+        skills_note = (
+            f"you have {len(matched)}/{len(job_canon)} required skills "
+            f"({', '.join(display_name(c) for c in matched[:3])}"
+            f"{'…' if len(matched) > 3 else ''}); "
+            f"missing {', '.join(display_name(c) for c in missing[:3])}"
+            f"{'…' if len(missing) > 3 else ''}"
+        )
+    elif matched:
+        skills_note = f"you have all {len(matched)} required skills"
+    else:
+        skills_note = f"none of the {len(job_canon)} required skills found on your résumé"
+
     result.reasoning = (
-        f"Semantic {result.semantic_similarity:.1f}%, "
-        f"Skills {result.skill_match_percentage:.1f}% "
-        f"({len(matched)}/{len(job_skills_lower)} matched)"
+        f"{result.match_score:.0f}% overall — semantic relevance "
+        f"{result.semantic_similarity:.0f}%, skill match "
+        f"{result.skill_match_percentage:.0f}% ({skills_note})."
     )
     return result
 
