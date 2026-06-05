@@ -12,7 +12,10 @@ export interface Session {
   token: string;
   candidateId: string;
   email?: string;
+  fullName?: string;
   resumeId?: string;
+  /** true when the session came from a real account (signup/login), not guest. */
+  account?: boolean;
 }
 
 export function getSession(): Session | null {
@@ -45,4 +48,8 @@ export function clearSession(): void {
 
 export function getToken(): string | null {
   return getSession()?.token ?? null;
+}
+
+export function isAuthed(): boolean {
+  return !!getSession()?.account;
 }

@@ -9,6 +9,8 @@ import ResultsDashboard from "@/components/ResultsDashboard";
 import RecentJobsPanel from "@/components/RecentJobsPanel";
 import ThemeToggle from "@/components/ThemeToggle";
 import AuroraBackground from "@/components/AuroraBackground";
+import AuthModal from "@/components/AuthModal";
+import UserMenu from "@/components/UserMenu";
 import {
   createCandidate,
   uploadResume,
@@ -18,7 +20,7 @@ import {
   type SearchFilters,
   type EligibleJobsResponse,
 } from "@/lib/api";
-import { setSession, patchSession } from "@/lib/session";
+import { setSession, patchSession, getSession, clearSession, getToken } from "@/lib/session";
 import { fadeUp, staggerContainer, staggerItem, swap } from "@/lib/motion";
 
 type Phase = "configure" | "processing" | "results";
@@ -43,6 +45,13 @@ export default function Home() {
 
   const [scrolled, setScrolled] = useState(false);
 
+  // Auth state (hydrated from the persisted session on mount).
+  const [authed, setAuthed] = useState(false);
+  const [acctEmail, setAcctEmail] = useState<string | undefined>();
+  const [acctName, setAcctName] = useState<string | undefined>();
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+
   const filtersRef = useRef<SearchFilters>({});
 
   useEffect(() => {
@@ -50,6 +59,31 @@ export default function Home() {
       .then((jobs) => setBrowseJobCount(jobs.length))
       .catch(() => setBrowseJobCount(0));
   }, []);
+
+  // Hydrate auth state from the stored session (client-only, one-shot).
+  useEffect(() => {
+    const s = getSession();
+    if (s?.account) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setAuthed(true);
+      setAcctEmail(s.email);
+      setAcctName(s.fullName);
+      if (s.email) setEmail(s.email);
+      if (s.fullName) setFullName(s.fullName);
+    }
+  }, []);
+
+  const openAuth = (mode: "login" | "signup") => { setAuthMode(mode); setAuthOpen(true); };
+
+  const handleSignOut = () => {
+    clearSession();
+    setAuthed(false);
+    setAcctEmail(undefined);
+    setAcctName(undefined);
+    setEmail("");
+    setFullName("");
+    handleReset();
+  };
 
   // Strengthen the header background once the page scrolls so content can't
   // bleed through the translucent bar.
@@ -73,9 +107,15 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      const candidate = await createCandidate(email, fullName);
-      const token = candidate.access_token;
-      setSession({ token, candidateId: candidate.id, email });
+      // Logged-in users reuse their account session; guests get a one-time token.
+      let token = getToken();
+      if (authed && token) {
+        // keep existing account session
+      } else {
+        const candidate = await createCandidate(email, fullName);
+        token = candidate.access_token;
+        setSession({ token, candidateId: candidate.id, email, fullName });
+      }
 
       const resume = await uploadResume(token, file);
 
@@ -196,10 +236,33 @@ export default function Home() {
                   )}
                 </AnimatePresence>
                 <ThemeToggle />
+                <UserMenu
+                  authed={authed}
+                  email={acctEmail}
+                  fullName={acctName}
+                  onLogin={() => openAuth("login")}
+                  onSignup={() => openAuth("signup")}
+                  onSignOut={handleSignOut}
+                />
               </div>
             </div>
           </div>
         </header>
+
+        {/* ── Auth modal ── */}
+        <AuthModal
+          open={authOpen}
+          initialMode={authMode}
+          onClose={() => setAuthOpen(false)}
+          onAuthed={(user) => {
+            setAuthed(true);
+            setAcctEmail(user.email);
+            setAcctName(user.full_name);
+            setEmail(user.email);
+            setFullName(user.full_name);
+            setAuthOpen(false);
+          }}
+        />
 
         {/* ── Error banner ── */}
         <AnimatePresence>
@@ -253,22 +316,38 @@ export default function Home() {
                   animate="show"
                   className="glass-strong rounded-3xl p-8"
                 >
-                  <motion.div variants={staggerItem} className="grid grid-cols-2 gap-4 mb-6">
-                    <Field label="Full Name">
-                      <input
-                        type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Yoginder Kumar"
-                        className="input-glass"
-                      />
-                    </Field>
-                    <Field label="Email">
-                      <input
-                        type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        className="input-glass"
-                      />
-                    </Field>
-                  </motion.div>
+                  {authed ? (
+                    <motion.div variants={staggerItem}
+                      className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-fg/[0.04] border border-fg/10">
+                      <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-[11px] font-bold on-accent shrink-0">
+                        {(acctName || acctEmail || "?").slice(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-fg truncate">{acctName || "Signed in"}</p>
+                        <p className="text-xs text-fg/50 truncate">{acctEmail}</p>
+                      </div>
+                      <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+                        Signed in
+                      </span>
+                    </motion.div>
+                  ) : (
+                    <motion.div variants={staggerItem} className="grid grid-cols-2 gap-4 mb-6">
+                      <Field label="Full Name">
+                        <input
+                          type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
+                          placeholder="Yoginder Kumar"
+                          className="input-glass"
+                        />
+                      </Field>
+                      <Field label="Email">
+                        <input
+                          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                          placeholder="you@example.com"
+                          className="input-glass"
+                        />
+                      </Field>
+                    </motion.div>
+                  )}
 
                   <motion.div variants={staggerItem} className="mb-8">
                     <Label>Resume</Label>

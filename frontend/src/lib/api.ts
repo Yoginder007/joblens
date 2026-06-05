@@ -230,6 +230,32 @@ export async function createCandidate(
   return res.json();
 }
 
+// ── Account auth (email + password) ──────────────────────────────────────────
+
+export async function signup(
+  email: string,
+  fullName: string,
+  password: string
+): Promise<CandidateCreated> {
+  const res = await fetch(`${API_BASE}/api/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, full_name: fullName, password }),
+  });
+  if (!res.ok) await parseError(res, "Sign up failed");
+  return res.json();
+}
+
+export async function login(email: string, password: string): Promise<CandidateCreated> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) await parseError(res, "Login failed");
+  return res.json();
+}
+
 // ── Résumés (authenticated) ──────────────────────────────────────────────────
 
 export async function uploadResume(token: string, file: File): Promise<ResumeUpload> {
