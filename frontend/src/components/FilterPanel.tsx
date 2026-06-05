@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { getPortals, type Portal, type SearchFilters } from "@/lib/api";
+import { getPortals, getFilterOptions, type FilterOptions, type Portal, type SearchFilters } from "@/lib/api";
+import Dropdown, { type DropdownOption } from "./Dropdown";
 
 interface FilterPanelProps {
   onFiltersChange: (filters: SearchFilters) => void;
@@ -15,19 +16,21 @@ const WORK_MODELS = [
   { label: "Hybrid", value: "hybrid" },
   { label: "On-site", value: "on-site" },
 ];
-const JOB_TYPES = [
-  { label: "Any type", value: "" },
-  { label: "Full-time", value: "full-time" },
-  { label: "Contract", value: "contract" },
-  { label: "Internship", value: "internship" },
+const JOB_TYPES: DropdownOption[] = [
+  { value: "", label: "Any type" },
+  { value: "full-time", label: "Full-time" },
+  { value: "contract", label: "Contract" },
+  { value: "internship", label: "Internship" },
 ];
-const DATE_POSTED = [
-  { label: "Any time", value: "" },
-  { label: "Last 24 hours", value: "1" },
-  { label: "Last 3 days", value: "3" },
-  { label: "Last week", value: "7" },
-  { label: "Last 2 weeks", value: "14" },
-  { label: "Last 30 days", value: "30" },
+const DATE_POSTED: DropdownOption[] = [
+  { value: "", label: "Any time" },
+  { value: "1", label: "Last 24 hours" },
+  { value: "3", label: "Last 3 days" },
+  { value: "7", label: "Last week" },
+  { value: "14", label: "Last 2 weeks" },
+  { value: "30", label: "Last 30 days" },
+  { value: "60", label: "Last 2 months" },
+  { value: "90", label: "Last 3 months" },
 ];
 
 export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelProps) {
@@ -41,6 +44,7 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
   const [matchMode, setMatchMode] = useState<"semantic" | "direct">("semantic");
   const [portals, setPortals] = useState<Portal[]>([]);
   const [selectedPortals, setSelectedPortals] = useState<string[]>([]);
+  const [opts, setOpts] = useState<FilterOptions | null>(null);
 
   const onFiltersChangeRef = useRef(onFiltersChange);
   useEffect(() => {
@@ -54,7 +58,29 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
         setSelectedPortals(p.map((x) => x.company));
       })
       .catch(console.error);
+    getFilterOptions().then(setOpts).catch(console.error);
   }, []);
+
+  // Searchable option lists, sourced from live data (countries first for location).
+  const locationOptions = useMemo<DropdownOption[]>(() => {
+    const seen = new Set<string>();
+    const out: DropdownOption[] = [];
+    for (const c of opts?.countries || []) {
+      if (seen.has(c.toLowerCase())) continue;
+      seen.add(c.toLowerCase());
+      out.push({ value: c, label: `${c} — all`, hint: "country" });
+    }
+    for (const l of opts?.locations || []) {
+      if (seen.has(l.toLowerCase())) continue;
+      seen.add(l.toLowerCase());
+      out.push({ value: l, label: l });
+    }
+    return out;
+  }, [opts]);
+  const titleOptions = useMemo<DropdownOption[]>(
+    () => (opts?.titles || []).map((t) => ({ value: t, label: t })),
+    [opts]
+  );
 
   useEffect(() => {
     onFiltersChangeRef.current({
@@ -161,8 +187,8 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
       {/* Location */}
       <div>
         <label className={labelCls}>Location</label>
-        <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
-          placeholder="e.g. Bangalore, New York, Remote..." className="input-glass" />
+        <Dropdown value={location} onChange={setLocation} options={locationOptions} searchable
+          disabled={disabled} placeholder="Type or pick a location…" ariaLabel="Location" />
       </div>
 
       {/* Work Model */}
@@ -185,27 +211,23 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
         </div>
       </div>
 
-      {/* Job Type + Date Posted (real value selectors) */}
+      {/* Job Type + Date Posted (animated dropdowns) */}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelCls}>Job Type</label>
-          <select value={jobType} onChange={(e) => setJobType(e.target.value)} className="select-glass">
-            {JOB_TYPES.map((t) => <option key={t.label} value={t.value}>{t.label}</option>)}
-          </select>
+          <Dropdown value={jobType} onChange={setJobType} options={JOB_TYPES} disabled={disabled} ariaLabel="Job type" />
         </div>
         <div>
           <label className={labelCls}>Date Posted</label>
-          <select value={datePosted} onChange={(e) => setDatePosted(e.target.value)} className="select-glass">
-            {DATE_POSTED.map((d) => <option key={d.label} value={d.value}>{d.label}</option>)}
-          </select>
+          <Dropdown value={datePosted} onChange={setDatePosted} options={DATE_POSTED} disabled={disabled} ariaLabel="Date posted" />
         </div>
       </div>
 
-      {/* Title Keyword */}
+      {/* Role / Title Keyword */}
       <div>
         <label className={labelCls}>Role / Title Keyword</label>
-        <input type="text" value={titleKeyword} onChange={(e) => setTitleKeyword(e.target.value)}
-          placeholder="e.g. SDE, Backend, Full Stack..." className="input-glass" />
+        <Dropdown value={titleKeyword} onChange={setTitleKeyword} options={titleOptions} searchable
+          disabled={disabled} placeholder="Type or pick a role…" ariaLabel="Role or title" />
       </div>
 
       {/* Career Portals */}
