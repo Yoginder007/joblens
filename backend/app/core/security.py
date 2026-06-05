@@ -27,10 +27,6 @@ def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def verify_token(token: str, token_hash: str) -> bool:
-    return secrets.compare_digest(hash_token(token), token_hash)
-
-
 # ── Password hashing (scrypt, stdlib) ────────────────────────────────────────
 # Format stored in the DB: "scrypt$<n>$<r>$<p>$<salt_hex>$<dk_hex>" — self-
 # describing so parameters can evolve without a data migration.

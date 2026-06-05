@@ -5,15 +5,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.params import csv as _csv
 from app.domains.jobs.repository import JobFilters
 from app.domains.jobs.schemas import JobResponse, JobSearchResponse
 from app.domains.jobs.service import JobService
 
 router = APIRouter(prefix="/api/jobs", tags=["Jobs"])
-
-
-def _csv(value: str | None) -> list[str]:
-    return [s.strip() for s in value.split(",")] if value else []
 
 
 class FilterOptions(BaseModel):

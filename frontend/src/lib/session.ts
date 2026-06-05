@@ -49,7 +49,3 @@ export function clearSession(): void {
 export function getToken(): string | null {
   return getSession()?.token ?? null;
 }
-
-export function isAuthed(): boolean {
-  return !!getSession()?.account;
-}

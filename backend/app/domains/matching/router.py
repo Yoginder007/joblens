@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.exceptions import ConflictError
+from app.core.params import csv as _csv
 from app.domains.candidates.dependencies import CurrentCandidate
 from app.domains.jobs.repository import JobFilters
 from app.domains.matching.schemas import EligibleJobsResponse, MatchesResponse
@@ -13,10 +14,6 @@ from app.domains.resumes.models import Resume
 from app.domains.resumes.service import ResumeService
 
 router = APIRouter(prefix="/api/jobs", tags=["Matching"])
-
-
-def _csv(value: str | None) -> list[str]:
-    return [s.strip() for s in value.split(",") if s.strip()] if value else []
 
 
 def _ready_resume(db: Session, resume_id: uuid.UUID, candidate, require_embedding: bool) -> Resume:

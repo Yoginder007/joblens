@@ -7,7 +7,7 @@ SQLite / in-process fallback — local dev runs the same stack via docker-compos
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Subscriptions = a candidate's standing intent to receive new matching jobs.
 
@@ -7,6 +5,8 @@ A worker calls ``run`` on a schedule (or instantly on new ingestion); it scores
 the résumé against current jobs, filters out anything already delivered, and
 pushes only the *new* matches over the configured channel.
 """
+from __future__ import annotations
+
 import logging
 
 import httpx
