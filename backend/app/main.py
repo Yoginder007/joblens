@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
 
+    from app.domains.candidates.router import auth_router
     from app.domains.candidates.router import router as candidates_router
     from app.domains.health.router import router as health_router
     from app.domains.ingestion.router import router as ingestion_router
@@ -63,6 +64,7 @@ def create_app() -> FastAPI:
 
     for r in (
         health_router,
+        auth_router,
         candidates_router,
         resumes_router,
         jobs_router,

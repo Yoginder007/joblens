@@ -18,16 +18,38 @@ candidate's résumés). Ingestion uses a separate `X-API-Key` header.
 
 ---
 
-## Candidates
+## Auth (accounts)
 
-### `POST /api/candidates`
-Register or rotate a candidate. Returns the bearer token **once**.
+Password-backed accounts. Passwords are hashed with **scrypt** (stdlib,
+memory-hard, per-user random salt). Both endpoints return a session bearer token.
 
+### `POST /api/auth/signup`
 ```jsonc
 // request
+{ "email": "you@example.com", "full_name": "Your Name", "password": "min-8-chars" }
+// 201 — { id, email, full_name, created_at, access_token }
+```
+`409` if an account with that email already exists; an existing **guest**
+record (no password) is upgraded in place.
+
+### `POST /api/auth/login`
+```jsonc
+{ "email": "you@example.com", "password": "•••" }   // 200 → { …, access_token }
+```
+`401` on bad email/password (constant-time, doesn't reveal which). Login
+**rotates** the token, invalidating prior sessions.
+
+---
+
+## Candidates
+
+### `POST /api/candidates`  (guest)
+Lightweight register-or-rotate by email, no password. Returns the bearer token
+**once**. Kept for backward compatibility / quick guest use.
+
+```jsonc
 { "email": "you@example.com", "full_name": "Your Name" }
-// 201
-{ "id": "uuid", "email": "...", "full_name": "...", "access_token": "•••" }
+// 201 — { id, email, full_name, created_at, access_token }
 ```
 
 ### `GET /api/candidates/me`  🔒
