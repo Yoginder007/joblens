@@ -38,6 +38,7 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
   const [workModel, setWorkModel] = useState("");
   const [jobType, setJobType] = useState("");
   const [datePosted, setDatePosted] = useState("");
+  const [matchMode, setMatchMode] = useState<"semantic" | "direct">("semantic");
   const [portals, setPortals] = useState<Portal[]>([]);
   const [selectedPortals, setSelectedPortals] = useState<string[]>([]);
 
@@ -64,12 +65,13 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
       work_model: workModel || undefined,
       job_type: jobType || undefined,
       posted_within_days: datePosted ? Number(datePosted) : undefined,
+      match_mode: matchMode,
       sources:
         selectedPortals.length > 0 && selectedPortals.length < portals.length
           ? selectedPortals
           : undefined,
     });
-  }, [location, titleKeyword, expMin, expMax, workModel, jobType, datePosted, selectedPortals, portals.length]);
+  }, [location, titleKeyword, expMin, expMax, workModel, jobType, datePosted, matchMode, selectedPortals, portals.length]);
 
   const togglePortal = useCallback((company: string) => {
     setSelectedPortals((prev) =>
@@ -88,7 +90,7 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
 
   const resetAll = useCallback(() => {
     setLocation(""); setTitleKeyword(""); setExpMin(0); setExpMax(20);
-    setWorkModel(""); setJobType(""); setDatePosted("");
+    setWorkModel(""); setJobType(""); setDatePosted(""); setMatchMode("semantic");
     setSelectedPortals(portals.map((p) => p.company));
   }, [portals]);
 
@@ -101,6 +103,35 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
         <button type="button" onClick={resetAll} className="text-[10px] text-violet-600 dark:text-violet-300 hover:underline">
           Reset filters
         </button>
+      </div>
+
+      {/* Match mode — Smart (AI) vs Direct (filter-driven) */}
+      <div>
+        <label className={labelCls}>Match Mode</label>
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            { v: "semantic", label: "Smart Match", hint: "AI relevance + skills" },
+            { v: "direct", label: "Direct Filter", hint: "your filters + skills only" },
+          ] as const).map((m) => (
+            <motion.button
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+              key={m.v} type="button" onClick={() => setMatchMode(m.v)}
+              className={`flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-all ${
+                matchMode === m.v
+                  ? "bg-accent text-white border-transparent shadow-[0_0_18px_rgba(139,92,246,0.4)]"
+                  : "bg-fg/[0.04] text-fg/70 border-fg/10 hover:text-fg"
+              }`}
+            >
+              <span className="text-xs font-bold">{m.label}</span>
+              <span className={`text-[10px] ${matchMode === m.v ? "text-white/80" : "text-fg/45"}`}>{m.hint}</span>
+            </motion.button>
+          ))}
+        </div>
+        <p className="text-[10px] text-fg/40 mt-2 leading-relaxed">
+          {matchMode === "direct"
+            ? "Direct Filter ranks by how many of a job's listed skills you have — best when you've set location/experience and want clean, predictable results."
+            : "Smart Match blends semantic relevance with skill overlap for a holistic score."}
+        </p>
       </div>
 
       {/* Experience range (min–max) */}

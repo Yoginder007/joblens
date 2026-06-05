@@ -77,3 +77,21 @@ def test_duplicate_job_skills_deduped():
     )
     assert res.skill_match_percentage == 100.0
     assert len([s for s in res.matched_skills]) == 1
+
+
+def test_direct_mode_scores_on_skills_only():
+    # With no embeddings, semantic falls back to 50%. In semantic mode that
+    # drags a 2/2 skill match below 100; in direct mode the score IS the skill %.
+    skills_resume = _resume(["python", "aws"])
+    semantic = calculate_match(skills_resume, "Eng", ["Python", "AWS"], 1, None, None, match_mode="semantic")
+    direct = calculate_match(skills_resume, "Eng", ["Python", "AWS"], 1, None, None, match_mode="direct")
+    assert direct.match_score == 100.0          # skill overlap only
+    assert semantic.match_score < direct.match_score  # 0.6*50 + 0.4*100 = 70
+    assert "skill match" in direct.reasoning.lower()
+
+
+def test_direct_mode_still_applies_experience_hard_filter():
+    # Under-qualified candidate is rejected regardless of mode.
+    res = calculate_match(_resume(["python"], years=1), "Senior", ["Python"], 5, None, None, match_mode="direct")
+    assert res.hard_filter_passed is False
+    assert res.match_score == 0.0

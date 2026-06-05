@@ -4,9 +4,14 @@
 > two-pass engine combining **pgvector semantic similarity** with skill overlap,
 > across multiple live career portals.
 
-**Live demo:** _add your Vercel URL here after deploy_ · **API docs:** `/<api-url>/api/docs`
+**🔗 Live demo:** [joblens-match.vercel.app](https://joblens-match.vercel.app) · **API + Swagger docs:** [joblens-api-xi3l.onrender.com/api/docs](https://joblens-api-xi3l.onrender.com/api/docs)
 
 `FastAPI` · `SQLAlchemy 2.0` · `PostgreSQL + pgvector` · `Celery` · `Next.js 16` · `Tailwind v4` · `TypeScript` · `framer-motion`
+
+> ℹ️ The backend runs on a free Render instance that sleeps after ~15 min idle, so
+> the **first request may take ~30–50 s to wake** — subsequent calls are fast.
+
+📚 **Docs:** [Architecture](ARCHITECTURE.md) · [API reference](API.md) · [Deployment guide](DEPLOY.md) · [Contributing](CONTRIBUTING.md)
 
 ---
 
@@ -14,8 +19,15 @@
 
 - **Résumé upload → structured parse → embedding.** A PDF is parsed (experience,
   skills, title) and embedded into a 384-dim vector.
-- **Two-pass matching.** Pass 1 hard-filters by experience; Pass 2 scores
-  `0.6 × semantic (pgvector cosine) + 0.4 × skill overlap` and ranks the results.
+- **Two matching modes.**
+  - **Smart Match** — `0.6 × semantic (pgvector cosine) + 0.4 × skill overlap`.
+  - **Direct Filter** — skill-overlap only, driven by the user's hard filters
+    (location/experience/etc.); avoids letting an approximate semantic signal
+    depress scores when a job description omits explicit skills.
+  Both apply an experience hard-filter first, then rank.
+- **Alias-aware skills.** A canonical normalizer means `JS↔JavaScript`,
+  `k8s↔Kubernetes`, `postgres↔PostgreSQL` all count as the same skill, with a
+  plain-English "why this matched" explanation per result.
 - **Multi-portal ingestion.** Live job data from Greenhouse/Lever/Amazon public
   APIs + an Adzuna aggregator, normalised behind one schema; every posting keeps
   a real apply URL.

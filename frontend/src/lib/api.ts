@@ -127,6 +127,7 @@ export interface SearchFilters {
   job_type?: string;
   posted_within_days?: number;
   sources?: string[];
+  match_mode?: "semantic" | "direct";
 }
 
 export interface FacetCounts {
@@ -281,6 +282,7 @@ export async function getEligibleJobs(
   if (filters.job_type) params.set("job_type", filters.job_type);
   if (filters.posted_within_days !== undefined) params.set("posted_within_days", String(filters.posted_within_days));
   if (filters.sources?.length) params.set("sources", filters.sources.join(","));
+  if (filters.match_mode) params.set("match_mode", filters.match_mode);
 
   const res = await fetch(`${API_BASE}/api/jobs/eligible?${params}`, { headers: authHeaders(token) });
   if (!res.ok) await parseError(res, "Failed to get eligible jobs");

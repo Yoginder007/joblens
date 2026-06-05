@@ -24,6 +24,10 @@ import { fadeUp, staggerContainer, staggerItem, swap } from "@/lib/motion";
 type Phase = "configure" | "processing" | "results";
 type Tab = "match" | "browse";
 
+// Backend base URL — same source the API client uses, so footer links resolve
+// to the deployed API in production and localhost in dev.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("browse");
   const [phase, setPhase] = useState<Phase>("configure");
@@ -328,9 +332,9 @@ export default function Home() {
           <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-3">
             <p className="text-xs text-fg/25">JobLens · Powered by FastAPI + Next.js</p>
             <div className="flex items-center gap-4">
-              <a href="http://localhost:8000/api/docs" target="_blank" rel="noopener noreferrer"
+              <a href={`${API_BASE}/api/docs`} target="_blank" rel="noopener noreferrer"
                 className="text-xs text-violet-500 dark:text-violet-300/50 hover:text-violet-200 transition-colors">API Docs</a>
-              <a href="http://localhost:8000/api/health" target="_blank" rel="noopener noreferrer"
+              <a href={`${API_BASE}/api/health`} target="_blank" rel="noopener noreferrer"
                 className="text-xs text-violet-500 dark:text-violet-300/50 hover:text-violet-200 transition-colors">Health</a>
             </div>
           </div>

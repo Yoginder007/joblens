@@ -61,13 +61,15 @@ def get_eligible(
     job_type: str | None = None,
     posted_within_days: int | None = Query(None, ge=1, le=365),
     sources: str | None = None,
+    match_mode: str = Query("semantic", pattern="^(semantic|direct)$"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     """Jobs the candidate qualifies for (experience hard filter), scored + ranked.
 
     All scalar controls map to real ``JobFilters`` columns so the UI filters are
-    functional, not decorative.
+    functional, not decorative. ``match_mode=direct`` scores on skill overlap
+    alone (filter-driven); ``semantic`` blends vector similarity + skills.
     """
     resume = _ready_resume(db, resume_id, candidate, require_embedding=False)
     filters = JobFilters(
@@ -80,4 +82,4 @@ def get_eligible(
         posted_within_days=posted_within_days,
         sources=_csv(sources),
     )
-    return MatchingService(db).eligible(resume, filters, limit)
+    return MatchingService(db).eligible(resume, filters, limit, match_mode=match_mode)

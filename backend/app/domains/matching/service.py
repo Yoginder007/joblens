@@ -56,12 +56,20 @@ def calculate_match(
     resume_embedding,
     job_embedding,
     cosine_sim: float | None = None,
+    match_mode: str = "semantic",
 ) -> MatchResult:
     """Score one résumé↔job pair.
 
     ``cosine_sim`` (raw cosine in [-1, 1]) may be supplied by the caller to avoid
     recomputing a similarity the retrieval step already produced (pgvector ANN or
     the SQLite fallback both yield a distance). When ``None``, it's computed here.
+
+    ``match_mode``:
+      - "semantic" (default): weighted blend of semantic similarity + skill overlap.
+      - "direct": score on skill overlap alone. Useful when the candidate has
+        already narrowed by hard filters (location/experience) and just wants
+        skill-relevant roles — and avoids letting an approximate semantic signal
+        depress the score when job descriptions omit explicit skills.
     """
     settings = get_settings()
     result = MatchResult()
@@ -118,11 +126,16 @@ def calculate_match(
         for c in missing
     )
 
-    # ── Final weighted score ──
-    result.match_score = (
-        result.semantic_similarity * settings.SEMANTIC_WEIGHT
-        + result.skill_match_percentage * settings.SKILL_WEIGHT
-    )
+    # ── Final score ──
+    if match_mode == "direct":
+        # Skill-overlap only — the candidate has pre-filtered on hard criteria
+        # and wants skill relevance, not an approximate semantic guess.
+        result.match_score = result.skill_match_percentage
+    else:
+        result.match_score = (
+            result.semantic_similarity * settings.SEMANTIC_WEIGHT
+            + result.skill_match_percentage * settings.SKILL_WEIGHT
+        )
 
     # ── Explainability: a plain-English "why this matched" line ──
     if not job_canon:
@@ -140,11 +153,17 @@ def calculate_match(
     else:
         skills_note = f"none of the {len(job_canon)} required skills found on your résumé"
 
-    result.reasoning = (
-        f"{result.match_score:.0f}% overall — semantic relevance "
-        f"{result.semantic_similarity:.0f}%, skill match "
-        f"{result.skill_match_percentage:.0f}% ({skills_note})."
-    )
+    if match_mode == "direct":
+        result.reasoning = (
+            f"{result.match_score:.0f}% skill match ({skills_note}). "
+            f"Filtered by your criteria."
+        )
+    else:
+        result.reasoning = (
+            f"{result.match_score:.0f}% overall — semantic relevance "
+            f"{result.semantic_similarity:.0f}%, skill match "
+            f"{result.skill_match_percentage:.0f}% ({skills_note})."
+        )
     return result
 
 
@@ -237,7 +256,9 @@ class MatchingService:
             resume_id=resume.id, total_matches=len(flat), companies=groups, matches=flat
         )
 
-    def eligible(self, resume: Resume, filters: JobFilters, limit: int) -> EligibleJobsResponse:
+    def eligible(
+        self, resume: Resume, filters: JobFilters, limit: int, match_mode: str = "semantic"
+    ) -> EligibleJobsResponse:
         candidate_exp = self._candidate_exp(resume)
         jobs = self.jobs.eligible(candidate_exp, filters, limit)
         out: list[EligibleJobSummary] = []
@@ -245,6 +266,7 @@ class MatchingService:
             res = calculate_match(
                 resume.parsed_data or {}, job.title, job.technical_skills or [],
                 job.required_experience_years or 0, resume.embedding, job.embedding,
+                match_mode=match_mode,
             )
             out.append(EligibleJobSummary(
                 job_id=job.id, title=job.title, company=job.company, location=job.location,
