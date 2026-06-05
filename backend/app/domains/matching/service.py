@@ -128,9 +128,15 @@ def calculate_match(
 
     # ── Final score ──
     if match_mode == "direct":
-        # Skill-overlap only — the candidate has pre-filtered on hard criteria
-        # and wants skill relevance, not an approximate semantic guess.
-        result.match_score = result.skill_match_percentage
+        # The candidate already passed the hard filters (location/experience/etc.),
+        # so a direct match is a strong baseline; skill overlap is a *bonus*, not a
+        # penalty. This avoids collapsing scores when a posting simply doesn't list
+        # explicit skills (common in real job descriptions).
+        # Base 70 for clearing the filters + up to 30 from skill overlap.
+        if job_canon:
+            result.match_score = 70.0 + 0.30 * result.skill_match_percentage
+        else:
+            result.match_score = 85.0  # filters pass, no skills to compare on
     else:
         result.match_score = (
             result.semantic_similarity * settings.SEMANTIC_WEIGHT
@@ -155,8 +161,7 @@ def calculate_match(
 
     if match_mode == "direct":
         result.reasoning = (
-            f"{result.match_score:.0f}% skill match ({skills_note}). "
-            f"Filtered by your criteria."
+            f"{result.match_score:.0f}% — matches your filters; {skills_note}."
         )
     else:
         result.reasoning = (

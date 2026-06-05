@@ -79,15 +79,26 @@ def test_duplicate_job_skills_deduped():
     assert len([s for s in res.matched_skills]) == 1
 
 
-def test_direct_mode_scores_on_skills_only():
-    # With no embeddings, semantic falls back to 50%. In semantic mode that
-    # drags a 2/2 skill match below 100; in direct mode the score IS the skill %.
-    skills_resume = _resume(["python", "aws"])
-    semantic = calculate_match(skills_resume, "Eng", ["Python", "AWS"], 1, None, None, match_mode="semantic")
-    direct = calculate_match(skills_resume, "Eng", ["Python", "AWS"], 1, None, None, match_mode="direct")
-    assert direct.match_score == 100.0          # skill overlap only
-    assert semantic.match_score < direct.match_score  # 0.6*50 + 0.4*100 = 70
-    assert "skill match" in direct.reasoning.lower()
+def test_direct_mode_rewards_passing_filters_plus_skill_bonus():
+    # Direct mode = base 70 for clearing the hard filters + up to 30 from skills.
+    full = calculate_match(_resume(["python", "aws"]), "Eng", ["Python", "AWS"], 1, None, None, match_mode="direct")
+    assert full.match_score == 100.0            # 70 + 0.30*100
+
+    half = calculate_match(_resume(["python"]), "Eng", ["Python", "AWS"], 1, None, None, match_mode="direct")
+    assert half.match_score == 85.0             # 70 + 0.30*50
+
+    # Crucially: a job with NO listed skills doesn't collapse to ~0 in direct mode.
+    no_skills = calculate_match(_resume(["python"]), "Eng", [], 1, None, None, match_mode="direct")
+    assert no_skills.match_score == 85.0
+
+
+def test_direct_mode_beats_noisy_semantic_when_skills_sparse():
+    # When a job lists no skills and there are no embeddings, semantic mode is
+    # mostly the 50% fallback; direct mode gives a confident filter-pass score.
+    r = _resume(["python"])
+    semantic = calculate_match(r, "Eng", [], 1, None, None, match_mode="semantic")
+    direct = calculate_match(r, "Eng", [], 1, None, None, match_mode="direct")
+    assert direct.match_score > semantic.match_score
 
 
 def test_direct_mode_still_applies_experience_hard_filter():
