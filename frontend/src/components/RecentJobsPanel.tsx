@@ -28,6 +28,8 @@ export default function RecentJobsPanel() {
 
   // Monotonic request id: only the latest fetch commits state.
   const reqIdRef = useRef(0);
+  // Anchor for snapping the viewport back to the list top on page flips.
+  const listTopRef = useRef<HTMLDivElement>(null);
 
   const fetchJobs = useCallback((currentFilters: SearchV2Filters) => {
     const reqId = ++reqIdRef.current;
@@ -68,6 +70,8 @@ export default function RecentJobsPanel() {
   const go = (delta: number) => {
     setDir(delta);
     setPage((p) => Math.min(Math.max(p + delta, 0), pageCount - 1));
+    // Bottom pagination flips happen out of view — bring the list back.
+    listTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
@@ -106,7 +110,7 @@ export default function RecentJobsPanel() {
       {jobs.length > 0 && (
         <div>
           {/* Result header + page controls */}
-          <div className="flex items-center justify-between mb-4">
+          <div ref={listTopRef} className="flex items-center justify-between mb-4 scroll-mt-24">
             <p className="text-sm text-fg/60">
               Showing <span className="text-fg font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, jobs.length)}</span> of{" "}
               <span className="text-gradient font-bold">{jobs.length}</span> jobs
@@ -187,7 +191,8 @@ function JobBrowseCard({ job, onOpen }: { job: RecentJob; onOpen: (job: RecentJo
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter") onOpen(job); }}
-      className="group rounded-2xl glass glass-hover p-5 flex flex-col cursor-pointer"
+      className="group rounded-2xl glass glass-hover p-5 flex flex-col cursor-pointer
+                 transition-shadow duration-300 hover:shadow-[0_18px_50px_-20px_rgba(139,92,246,0.45)]"
     >
       <div className="flex justify-between items-start mb-2">
         <h4 className="text-sm font-semibold text-fg group-hover:text-violet-500 dark:group-hover:text-violet-200 transition-colors line-clamp-2">{job.title}</h4>
@@ -239,7 +244,8 @@ function JobBrowseCard({ job, onOpen }: { job: RecentJob; onOpen: (job: RecentJo
           <a href={job.job_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-accent text-white text-xs font-semibold hover:shadow-[0_0_16px_rgba(139,92,246,0.5)] transition-all">
             View
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+              fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
             </svg>
           </a>

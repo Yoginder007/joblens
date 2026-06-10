@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import ResumeUploader from "@/components/ResumeUploader";
+import AnimatedNumber from "@/components/AnimatedNumber";
 import FilterPanel from "@/components/FilterPanel";
 import ProcessingState from "@/components/ProcessingState";
 import ResultsDashboard from "@/components/ResultsDashboard";
@@ -55,7 +56,9 @@ export default function Home() {
   const filtersRef = useRef<SearchFilters>({});
 
   useEffect(() => {
-    getRecentJobs(60)
+    // limit=500 (API max) so the count reflects the real catalogue size, not
+    // the default page cap.
+    getRecentJobs(60, undefined, undefined, 500)
       .then((jobs) => setBrowseJobCount(jobs.length))
       .catch(() => setBrowseJobCount(0));
   }, []);
@@ -136,8 +139,11 @@ export default function Home() {
       setResults(eligible);
       setPhase("results");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
       setPhase("configure");
+      // Guest flow hit a password-protected account → route them to login.
+      if (/log in/i.test(message)) openAuth("login");
     } finally {
       setIsSubmitting(false);
     }
@@ -298,7 +304,28 @@ export default function Home() {
                 <Hero
                   title="Discover every role."
                   subtitle="Browse all jobs posted in the last 2 months across every integrated board — no resume required."
-                />
+                >
+                  {browseJobCount !== null && browseJobCount > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.25, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                      className="mt-5 flex items-center justify-center gap-2 flex-wrap"
+                    >
+                      <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass text-xs font-semibold text-fg/70">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                        </span>
+                        <AnimatedNumber value={browseJobCount} />
+                        <span className="text-fg/45 font-medium">live roles</span>
+                      </span>
+                      <span className="px-3.5 py-1.5 rounded-full glass text-xs font-medium text-fg/50">
+                        Real apply links
+                      </span>
+                    </motion.div>
+                  )}
+                </Hero>
                 <RecentJobsPanel />
               </motion.div>
             )}
@@ -423,13 +450,14 @@ export default function Home() {
   );
 }
 
-function Hero({ title, subtitle }: { title: string; subtitle: string }) {
+function Hero({ title, subtitle, children }: { title: string; subtitle: string; children?: React.ReactNode }) {
   return (
     <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center mb-10">
       <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-gradient-animate leading-[1.1]">
         {title}
       </h2>
       <p className="text-sm text-fg/45 max-w-lg mx-auto leading-relaxed">{subtitle}</p>
+      {children}
     </motion.div>
   );
 }

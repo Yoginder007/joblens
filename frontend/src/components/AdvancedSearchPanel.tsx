@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { getFilterOptions, type FilterOptions, type SearchV2Filters, type FacetCounts } from "@/lib/api";
 import Dropdown, { type DropdownOption } from "./Dropdown";
 import MultiDropdown from "./MultiDropdown";
@@ -57,6 +57,12 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
   const [sortBy, setSortBy] = useState<"date" | "relevance" | "salary">("date");
   const [preset, setPreset] = useState<string>(""); // active experience preset id
   const [opts, setOpts] = useState<FilterOptions | null>(null);
+  // Collapsed by default so job results are visible above the fold; the panel
+  // expands on demand. `settled` releases overflow clipping once the expand
+  // animation finishes (the dropdown menus are absolutely positioned and must
+  // be allowed to overflow the panel).
+  const [expanded, setExpanded] = useState(false);
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     getFilterOptions().then(setOpts).catch(console.error);
@@ -153,6 +159,11 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
     setPostedWithin(""); setCompanies([]); setSortBy("date"); setPreset("");
   };
 
+  // Shown as a badge on the collapsed header so active filters stay visible.
+  const activeCount =
+    [q, workModel, industry, jobType, postedWithin, preset].filter(Boolean).length +
+    locations.length + companies.length;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -160,20 +171,62 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
       className="glass-strong rounded-2xl p-6"
     >
-      <div className="flex items-center justify-between mb-6">
+      {/* Header doubles as the expand/collapse control so results stay above
+          the fold by default. */}
+      <button
+        type="button"
+        onClick={() => { setSettled(false); setExpanded((e) => !e); }}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between gap-3 group/hdr"
+      >
         <h3 className="text-sm font-bold text-fg uppercase tracking-wider flex items-center gap-2">
           <svg className="w-4 h-4 text-violet-500 dark:text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
           Advanced Filters
+          <AnimatePresence>
+            {activeCount > 0 && (
+              <motion.span
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent on-accent tabular-nums"
+              >
+                {activeCount}
+              </motion.span>
+            )}
+          </AnimatePresence>
         </h3>
-        {totalJobs !== null && (
-          <span className="text-xs text-fg/50">
-            <span className="text-gradient font-bold">{totalJobs}</span> jobs found
-          </span>
-        )}
-      </div>
+        <span className="flex items-center gap-3">
+          {totalJobs !== null && (
+            <span className="text-xs text-fg/50">
+              <span className="text-gradient font-bold">{totalJobs}</span> jobs found
+            </span>
+          )}
+          <motion.svg
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="w-4 h-4 text-fg/40 group-hover/hdr:text-fg/80 transition-colors"
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </motion.svg>
+        </span>
+      </button>
 
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="filters-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            onAnimationComplete={() => setSettled(true)}
+            className={settled ? "overflow-visible" : "overflow-hidden"}
+          >
+            <div className="pt-6">
       {/* Location — the primary filter, spans full width */}
       <div className="mb-5">
         <label className={labelCls}>
@@ -264,6 +317,10 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
           Clear Filters
         </button>
       </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
