@@ -25,11 +25,18 @@ class CandidateService:
         Re-registering the same email rotates the token, so the latest caller
         owns the candidate's résumés. No password — kept for backward
         compatibility with the original lightweight flow.
+
+        Password-backed accounts are excluded: otherwise anyone who knows a
+        registered email could mint themselves a valid token for that account.
         """
         raw_token = generate_token()
         token_hash = hash_token(raw_token)
 
         candidate = self.repo.get_by_email(payload.email)
+        if candidate is not None and candidate.password_hash:
+            raise ConflictError(
+                "This email belongs to a registered account. Please log in."
+            )
         if candidate is None:
             candidate = Candidate(
                 email=payload.email,

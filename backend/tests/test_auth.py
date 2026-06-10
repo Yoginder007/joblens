@@ -146,6 +146,23 @@ def test_guest_registration_still_works(client):
     assert r.json()["access_token"]
 
 
+def test_guest_endpoint_cannot_hijack_password_account(client):
+    """POST /api/candidates must NOT rotate (steal) the token of a
+    password-backed account — that would be an account takeover."""
+    email = _email()
+    signup_tok = client.post("/api/auth/signup", json={
+        "email": email, "full_name": "Owner", "password": "password123"
+    }).json()["access_token"]
+
+    r = client.post("/api/candidates", json={"email": email, "full_name": "Attacker"})
+    assert r.status_code == 409
+
+    # The legitimate owner's token must still be valid.
+    me = client.get("/api/candidates/me", headers={"Authorization": f"Bearer {signup_tok}"})
+    assert me.status_code == 200
+    assert me.json()["full_name"] == "Owner"
+
+
 def test_guest_account_can_be_claimed_via_signup(client):
     email = _email()
     # guest first (no password)
