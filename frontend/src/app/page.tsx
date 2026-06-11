@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
-import ResumeUploader from "@/components/ResumeUploader";
 import AnimatedNumber from "@/components/AnimatedNumber";
-import FilterPanel from "@/components/FilterPanel";
+import MatchWizard from "@/components/MatchWizard";
+import RotatingWord from "@/components/RotatingWord";
 import ProcessingState from "@/components/ProcessingState";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import RecentJobsPanel from "@/components/RecentJobsPanel";
@@ -22,7 +22,7 @@ import {
   type EligibleJobsResponse,
 } from "@/lib/api";
 import { setSession, patchSession, getSession, clearSession, getToken } from "@/lib/session";
-import { fadeUp, staggerContainer, staggerItem, swap } from "@/lib/motion";
+import { fadeUp, swap } from "@/lib/motion";
 
 type Phase = "configure" | "processing" | "results";
 type Tab = "match" | "browse";
@@ -302,7 +302,15 @@ export default function Home() {
             {activeTab === "browse" && (
               <motion.div key="browse" variants={swap} initial="hidden" animate="show" exit="exit">
                 <Hero
-                  title="Discover every role."
+                  title={
+                    <>
+                      <span className="text-gradient-animate">Discover </span>
+                      <RotatingWord
+                        className="text-gradient-animate"
+                        words={["every open role.", "your next role.", "the perfect fit."]}
+                      />
+                    </>
+                  }
                   subtitle="Browse all jobs posted in the last 2 months across every integrated board — no resume required."
                 >
                   {browseJobCount !== null && browseJobCount > 0 && (
@@ -337,80 +345,21 @@ export default function Home() {
                   title="Find your perfect role."
                   subtitle="Upload your resume and set your preferences. We'll match you with eligible roles and can keep alerting you as new ones land."
                 />
-                <motion.div
-                  variants={staggerContainer(0.08, 0.1)}
-                  initial="hidden"
-                  animate="show"
-                  className="glass-strong rounded-3xl p-8"
-                >
-                  {authed ? (
-                    <motion.div variants={staggerItem}
-                      className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-fg/[0.04] border border-fg/10">
-                      <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-[11px] font-bold on-accent shrink-0">
-                        {(acctName || acctEmail || "?").slice(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-fg truncate">{acctName || "Signed in"}</p>
-                        <p className="text-xs text-fg/50 truncate">{acctEmail}</p>
-                      </div>
-                      <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
-                        Signed in
-                      </span>
-                    </motion.div>
-                  ) : (
-                    <motion.div variants={staggerItem} className="grid grid-cols-2 gap-4 mb-6">
-                      <Field label="Full Name">
-                        <input
-                          type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
-                          placeholder="Yoginder Kumar"
-                          className="input-glass"
-                        />
-                      </Field>
-                      <Field label="Email">
-                        <input
-                          type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                          placeholder="you@example.com"
-                          className="input-glass"
-                        />
-                      </Field>
-                    </motion.div>
-                  )}
-
-                  <motion.div variants={staggerItem} className="mb-8">
-                    <Label>Resume</Label>
-                    <ResumeUploader onFileSelected={setFile} disabled={isSubmitting} />
-                  </motion.div>
-
-                  <motion.div variants={staggerItem} className="flex items-center gap-4 mb-8">
-                    <div className="flex-1 h-px bg-fg/10" />
-                    <span className="text-[10px] text-fg/30 uppercase tracking-[0.2em]">Search Filters</span>
-                    <div className="flex-1 h-px bg-fg/10" />
-                  </motion.div>
-
-                  <motion.div variants={staggerItem}>
-                    <FilterPanel onFiltersChange={handleFiltersChange} disabled={isSubmitting} />
-                  </motion.div>
-
-                  <motion.button
-                    variants={staggerItem}
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !file || !email || !fullName}
-                    className="mt-8 w-full py-3.5 rounded-2xl text-sm font-bold on-accent bg-accent
-                               shadow-[0_10px_40px_-8px_rgba(139,92,246,0.6)] transition-all
-                               disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_14px_50px_-8px_rgba(139,92,246,0.8)]"
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                        </svg>
-                        Processing…
-                      </span>
-                    ) : "Find Matching Jobs"}
-                  </motion.button>
+                <motion.div variants={fadeUp} initial="hidden" animate="show">
+                  <MatchWizard
+                    authed={authed}
+                    acctName={acctName}
+                    acctEmail={acctEmail}
+                    email={email}
+                    setEmail={setEmail}
+                    fullName={fullName}
+                    setFullName={setFullName}
+                    file={file}
+                    setFile={setFile}
+                    isSubmitting={isSubmitting}
+                    onFiltersChange={handleFiltersChange}
+                    onSubmit={handleSubmit}
+                  />
                 </motion.div>
               </motion.div>
             )}
@@ -450,31 +399,14 @@ export default function Home() {
   );
 }
 
-function Hero({ title, subtitle, children }: { title: string; subtitle: string; children?: React.ReactNode }) {
+function Hero({ title, subtitle, children }: { title: React.ReactNode; subtitle: string; children?: React.ReactNode }) {
   return (
     <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center mb-10">
-      <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 text-gradient-animate leading-[1.1]">
-        {title}
+      <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 leading-[1.1]">
+        {typeof title === "string" ? <span className="text-gradient-animate">{title}</span> : title}
       </h2>
       <p className="text-sm text-fg/45 max-w-lg mx-auto leading-relaxed">{subtitle}</p>
       {children}
     </motion.div>
-  );
-}
-
-function Label({ children }: { children: React.ReactNode }) {
-  return (
-    <label className="block text-[10px] font-semibold text-fg/45 uppercase tracking-[0.18em] mb-2">
-      {children}
-    </label>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Label>{label}</Label>
-      {children}
-    </div>
   );
 }

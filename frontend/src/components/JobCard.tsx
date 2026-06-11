@@ -3,24 +3,15 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { EligibleJob } from "@/lib/api";
-import AnimatedNumber from "./AnimatedNumber";
+import ScoreRing from "./ScoreRing";
 
 interface JobCardProps {
   job: EligibleJob;
   rank: number;
 }
 
-function getScoreColor(score: number) {
-  if (score >= 80)
-    return { text: "text-emerald-600 dark:text-emerald-300", ring: "border-emerald-500/40", bg: "bg-emerald-500/10", glow: "shadow-[0_0_18px_rgba(16,185,129,0.25)]" };
-  if (score >= 50)
-    return { text: "text-amber-600 dark:text-amber-300", ring: "border-amber-500/40", bg: "bg-amber-500/10", glow: "shadow-[0_0_18px_rgba(245,158,11,0.25)]" };
-  return { text: "text-rose-600 dark:text-rose-300", ring: "border-rose-500/40", bg: "bg-rose-500/10", glow: "" };
-}
-
 export default function JobCard({ job, rank }: JobCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const score = getScoreColor(job.match_score);
 
   const matchedSkills = job.matched_skills?.filter((s) => s.found_in_resume) || [];
   const missingSkills = job.matched_skills?.filter((s) => !s.found_in_resume) || [];
@@ -55,13 +46,8 @@ export default function JobCard({ job, rank }: JobCardProps) {
             {job.industry ? ` · ${job.industry}` : ""}
           </p>
         </div>
-        <div
-          onClick={() => setExpanded(!expanded)}
-          className={`flex-shrink-0 px-3 py-1.5 rounded-xl border ${score.bg} ${score.ring} ${score.glow} cursor-pointer`}
-        >
-          <span className={`text-sm font-bold ${score.text}`}>
-            <AnimatedNumber value={job.match_score} suffix="%" />
-          </span>
+        <div onClick={() => setExpanded(!expanded)} className="flex-shrink-0 cursor-pointer">
+          <ScoreRing value={job.match_score} />
         </div>
       </div>
 

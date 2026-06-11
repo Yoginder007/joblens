@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
 import { searchJobs, type RecentJob, type SearchV2Response, type SearchV2Filters } from "@/lib/api";
 import AdvancedSearchPanel from "./AdvancedSearchPanel";
 import JobDetailDrawer from "./JobDetailDrawer";
+import JobDetailBody from "./JobDetailBody";
 import { staggerItem } from "@/lib/motion";
+import { companyGradient, companyInitials, daysAgo } from "@/lib/ui";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 
 const PAGE_SIZE = 10;
 
@@ -25,6 +28,10 @@ export default function RecentJobsPanel() {
   const [page, setPage] = useState(0);
   const [dir, setDir] = useState(1); // 1 = forward, -1 = back (drives flip direction)
   const [selected, setSelected] = useState<RecentJob | null>(null);
+
+  // Desktop (xl+) renders a LinkedIn-style split view: list left, sticky
+  // detail pane right. Below xl, tapping a card opens the slide-over drawer.
+  const isDesktop = useMediaQuery("(min-width: 1280px)");
 
   // Monotonic request id: only the latest fetch commits state.
   const reqIdRef = useRef(0);
@@ -66,6 +73,36 @@ export default function RecentJobsPanel() {
     () => jobs.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
     [jobs, safePage]
   );
+
+  // Desktop: keep something selected so the detail pane is never empty.
+  // Mobile: selection drives the drawer, so it must stay user-initiated.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSelected((cur) => {
+      if (!isDesktop) return null;
+      return cur && pageJobs.some((j) => j.id === cur.id) ? cur : pageJobs[0] ?? null;
+    });
+  }, [isDesktop, pageJobs]);
+
+  // Desktop: ↑/↓ moves the selection through the visible page.
+  useEffect(() => {
+    if (!isDesktop) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      e.preventDefault();
+      setSelected((cur) => {
+        const idx = pageJobs.findIndex((j) => j.id === cur?.id);
+        const next = e.key === "ArrowDown"
+          ? Math.min(idx + 1, pageJobs.length - 1)
+          : Math.max(idx - 1, 0);
+        return pageJobs[next] ?? cur;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isDesktop, pageJobs]);
 
   const go = (delta: number) => {
     setDir(delta);
@@ -114,37 +151,79 @@ export default function RecentJobsPanel() {
             <p className="text-sm text-fg/60">
               Showing <span className="text-fg font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, jobs.length)}</span> of{" "}
               <span className="text-gradient font-bold">{jobs.length}</span> jobs
+              {isDesktop && <span className="text-fg/30 text-xs ml-3 hidden xl:inline">↑↓ to browse</span>}
             </p>
             <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
           </div>
 
-          {/* Flip-paginated merged list (no source sections) */}
-          <div className="relative" style={{ perspective: 1600 }}>
-            <AnimatePresence mode="wait" custom={dir}>
-              <motion.div
-                key={safePage}
-                custom={dir}
-                variants={flipVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-                style={{ transformStyle: "preserve-3d" }}
-                className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
-              >
-                {pageJobs.map((job) => <JobBrowseCard key={job.id} job={job} onOpen={setSelected} />)}
-              </motion.div>
-            </AnimatePresence>
-          </div>
+          {/* xl+: split view (list + sticky detail pane). Below xl: card grid + drawer. */}
+          <div className="xl:grid xl:grid-cols-[420px_minmax(0,1fr)] xl:gap-6 xl:items-start">
+            <div>
+              {/* Flip-paginated merged list (no source sections) */}
+              <div className="relative" style={{ perspective: 1600 }}>
+                <AnimatePresence mode="wait" custom={dir}>
+                  <motion.div
+                    key={safePage}
+                    custom={dir}
+                    variants={flipVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ transformStyle: "preserve-3d" }}
+                    className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 xl:gap-3"
+                  >
+                    {pageJobs.map((job) => (
+                      <JobBrowseCard
+                        key={job.id}
+                        job={job}
+                        active={isDesktop && selected?.id === job.id}
+                        compact={isDesktop}
+                        onOpen={setSelected}
+                      />
+                    ))}
+                  </motion.div>
+                </AnimatePresence>
+              </div>
 
-          {/* Bottom page controls + dots */}
-          <div className="flex items-center justify-center gap-4 mt-8">
-            <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
+              {/* Bottom page controls */}
+              <div className="flex items-center justify-center gap-4 mt-8">
+                <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
+              </div>
+            </div>
+
+            {/* Sticky detail pane (desktop only) */}
+            <div className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-3xl glass-strong">
+              <AnimatePresence mode="wait">
+                {selected ? (
+                  <motion.div
+                    key={selected.id}
+                    initial={{ opacity: 0, y: 14 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    <JobDetailBody job={selected} />
+                  </motion.div>
+                ) : (
+                  <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="flex flex-col items-center justify-center py-24 text-center px-8">
+                    <div className="w-14 h-14 rounded-2xl bg-fg/5 flex items-center justify-center mb-4">
+                      <svg className="w-7 h-7 text-fg/25" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm text-fg/40">Select a job to see the full posting here.</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </div>
       )}
 
-      <JobDetailDrawer job={selected} onClose={() => setSelected(null)} />
+      {/* Mobile / tablet: slide-over drawer */}
+      {!isDesktop && <JobDetailDrawer job={selected} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -181,33 +260,66 @@ function PageControls({
   );
 }
 
-function JobBrowseCard({ job, onOpen }: { job: RecentJob; onOpen: (job: RecentJob) => void }) {
+function JobBrowseCard({
+  job, onOpen, active = false, compact = false,
+}: { job: RecentJob; onOpen: (job: RecentJob) => void; active?: boolean; compact?: boolean }) {
+  // Subtle pointer-tracked 3D tilt (springs back on leave).
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
+  const srx = useSpring(rx, { stiffness: 220, damping: 18 });
+  const sry = useSpring(ry, { stiffness: 220, damping: 18 });
+
+  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    ry.set(((e.clientX - r.left) / r.width - 0.5) * 5);
+    rx.set(-((e.clientY - r.top) / r.height - 0.5) * 5);
+  };
+  const onLeave = () => { rx.set(0); ry.set(0); };
+
+  const fresh = daysAgo(job.posted_date || job.scraped_at);
+
   return (
     <motion.div
       variants={staggerItem}
       initial="hidden" animate="show"
-      whileHover={{ y: -5 }}
+      whileHover={{ y: -4 }}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      style={{ rotateX: srx, rotateY: sry, transformPerspective: 900 }}
       onClick={() => onOpen(job)}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter") onOpen(job); }}
-      className="group rounded-2xl glass glass-hover p-5 flex flex-col cursor-pointer
-                 transition-shadow duration-300 hover:shadow-[0_18px_50px_-20px_rgba(139,92,246,0.45)]"
+      className={`group rounded-2xl glass glass-hover p-5 flex flex-col cursor-pointer
+                  transition-shadow duration-300 hover:shadow-[0_18px_50px_-20px_rgba(139,92,246,0.45)]
+                  ${active ? "ring-1 ring-violet-400/60 !border-violet-400/40 !bg-fg/[0.05]" : ""}`}
     >
-      <div className="flex justify-between items-start mb-2">
-        <h4 className="text-sm font-semibold text-fg group-hover:text-violet-500 dark:group-hover:text-violet-200 transition-colors line-clamp-2">{job.title}</h4>
-        <div className="flex gap-1 shrink-0">
-          {job.work_model && (
-            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-fg/8 text-fg/50">{job.work_model}</span>
-          )}
+      <div className="flex items-start gap-3 mb-2">
+        <div
+          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 mt-0.5"
+          style={{ backgroundImage: companyGradient(job.company) }}
+        >
+          {companyInitials(job.company)}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start gap-2">
+            <h4 className="text-sm font-semibold text-fg group-hover:text-violet-500 dark:group-hover:text-violet-200 transition-colors line-clamp-2">{job.title}</h4>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {fresh && <span className="text-[9px] text-fg/35 whitespace-nowrap">{fresh}</span>}
+              {job.work_model && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-fg/8 text-fg/50">{job.work_model}</span>
+              )}
+            </div>
+          </div>
+          <p className="text-xs text-fg/50 mt-0.5">
+            <span className="font-medium text-fg/70">{job.company}</span>
+            {job.source && job.source !== job.company ? ` · via ${job.source}` : ""}
+            {job.industry ? ` · ${job.industry}` : ""}
+          </p>
         </div>
       </div>
-      <p className="text-xs text-fg/50 mb-3">
-        <span className="font-medium text-fg/70">{job.company}</span>
-        {job.source && job.source !== job.company ? ` · via ${job.source}` : ""}
-        {job.industry ? ` · ${job.industry}` : ""}
-      </p>
-      <p className="text-xs text-fg/45 line-clamp-2 mb-3">{job.description}</p>
+
+      {!compact && <p className="text-xs text-fg/45 line-clamp-2 mb-3">{job.description}</p>}
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {job.location && (
@@ -229,11 +341,11 @@ function JobBrowseCard({ job, onOpen }: { job: RecentJob; onOpen: (job: RecentJo
 
       {job.technical_skills && job.technical_skills.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
-          {job.technical_skills.slice(0, 5).map((skill) => (
+          {job.technical_skills.slice(0, compact ? 4 : 5).map((skill) => (
             <span key={skill} className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/12 text-violet-700 dark:text-violet-300 border border-violet-500/20">{skill}</span>
           ))}
-          {job.technical_skills.length > 5 && (
-            <span className="px-2 py-0.5 rounded-md text-[10px] text-fg/30">+{job.technical_skills.length - 5}</span>
+          {job.technical_skills.length > (compact ? 4 : 5) && (
+            <span className="px-2 py-0.5 rounded-md text-[10px] text-fg/30">+{job.technical_skills.length - (compact ? 4 : 5)}</span>
           )}
         </div>
       )}
