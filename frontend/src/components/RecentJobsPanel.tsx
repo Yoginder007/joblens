@@ -53,8 +53,29 @@ export default function RecentJobsPanel() {
   const reqIdRef = useRef(0);
   // Anchor for snapping the viewport back to the list top on page flips.
   const listTopRef = useRef<HTMLDivElement>(null);
+  // Per-filter-set page cache + next-page prefetch make flips instant: the
+  // network round-trip happens before the user asks for the page.
+  const cacheRef = useRef<Map<number, RecentJob[]>>(new Map());
+
+  const prefetch = useCallback((currentFilters: SearchV2Filters, pageN: number) => {
+    if (cacheRef.current.has(pageN)) return;
+    cacheRef.current.set(pageN, []); // reserve so we don't double-fetch
+    searchJobs({ ...currentFilters, limit: PAGE_SIZE, offset: pageN * PAGE_SIZE, include_facets: false })
+      .then((res) => cacheRef.current.set(pageN, res.jobs))
+      .catch(() => cacheRef.current.delete(pageN));
+  }, []);
 
   const fetchPage = useCallback((currentFilters: SearchV2Filters, pageN: number) => {
+    const cached = cacheRef.current.get(pageN);
+    if (cached && cached.length > 0) {
+      // Instant flip from cache; warm the next page in the background.
+      reqIdRef.current++; // invalidate any in-flight fetch
+      setView({ page: pageN, jobs: cached });
+      setLoading(false);
+      setError(null);
+      prefetch(currentFilters, pageN + 1);
+      return;
+    }
     const reqId = ++reqIdRef.current;
     setLoading(true);
     searchJobs({
@@ -66,10 +87,12 @@ export default function RecentJobsPanel() {
     })
       .then((res) => {
         if (reqId !== reqIdRef.current) return;
+        cacheRef.current.set(pageN, res.jobs);
         setView({ page: pageN, jobs: res.jobs });
         setTotal(res.total);
         if (res.facets) setFacets(res.facets);
         setError(null);
+        if ((pageN + 1) * PAGE_SIZE < res.total) prefetch(currentFilters, pageN + 1);
       })
       .catch((e) => {
         if (reqId !== reqIdRef.current) return;
@@ -78,14 +101,14 @@ export default function RecentJobsPanel() {
       .finally(() => {
         if (reqId === reqIdRef.current) setLoading(false);
       });
-  }, []);
+  }, [prefetch]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchPage(filters, page);
   }, [filters, page, fetchPage]);
 
   const handleFiltersChange = useCallback((newFilters: SearchV2Filters) => {
+    cacheRef.current.clear(); // cache is per filter set
     setFilters(newFilters);
     setPage(0); // new filter set → back to first page
   }, []);
@@ -123,6 +146,13 @@ export default function RecentJobsPanel() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [isDesktop, pageJobs]);
+
+  // Reset the detail pane's internal scroll when the selected job changes —
+  // otherwise a new job appears mid-scroll and looks broken.
+  const paneRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    paneRef.current?.scrollTo({ top: 0 });
+  }, [selected?.id]);
 
   const go = (delta: number) => {
     setDir(delta);
@@ -173,7 +203,7 @@ export default function RecentJobsPanel() {
               <span className="text-gradient font-bold">{total}</span> jobs
               {isDesktop && <span className="text-fg/30 text-xs ml-3 hidden xl:inline">↑↓ to browse</span>}
             </p>
-            <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
+            <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} loading={loading} />
           </div>
 
           {/* xl+: split view (list + sticky detail pane). Below xl: card grid + drawer. */}
@@ -209,13 +239,13 @@ export default function RecentJobsPanel() {
 
               {/* Bottom page controls */}
               <div className="flex items-center justify-center gap-4 mt-8">
-                <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
+                <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} loading={loading} />
               </div>
             </div>
 
             {/* Sticky detail pane (desktop only). popLayout crossfades the
                 outgoing job with the incoming one — no empty-pane flash. */}
-            <div className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-3xl glass-strong">
+            <div ref={paneRef} className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-3xl glass-strong">
               <AnimatePresence mode="popLayout" initial={false}>
                 {selected ? (
                   <motion.div
@@ -251,13 +281,15 @@ export default function RecentJobsPanel() {
 }
 
 function PageControls({
-  page, pageCount, onPrev, onNext, disabled,
-}: { page: number; pageCount: number; onPrev: () => void; onNext: () => void; disabled?: boolean }) {
+  page, pageCount, onPrev, onNext, loading,
+}: { page: number; pageCount: number; onPrev: () => void; onNext: () => void; loading?: boolean }) {
+  // NOTE: never disable on `loading` — clicks must always respond (the
+  // request-id guard makes rapid paging safe). Only the bounds disable.
   return (
     <div className="flex items-center gap-2">
       <motion.button
         whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}
-        onClick={onPrev} disabled={disabled || page === 0}
+        onClick={onPrev} disabled={page === 0}
         className="w-9 h-9 rounded-xl glass glass-hover flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
         aria-label="Previous page"
       >
@@ -265,12 +297,18 @@ function PageControls({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
         </svg>
       </motion.button>
-      <span className="text-xs text-fg/50 tabular-nums min-w-[54px] text-center">
+      <span className="relative text-xs text-fg/50 tabular-nums min-w-[54px] text-center">
         {page + 1} / {pageCount}
+        {loading && (
+          <svg className="animate-spin w-3 h-3 text-violet-400 absolute -right-4 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        )}
       </span>
       <motion.button
         whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}
-        onClick={onNext} disabled={disabled || page >= pageCount - 1}
+        onClick={onNext} disabled={page >= pageCount - 1}
         className="w-9 h-9 rounded-xl glass glass-hover flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
         aria-label="Next page"
       >
