@@ -32,7 +32,8 @@ jobs:
 
       - name: Deactivate stale jobs (not re-scraped in 30 days)
         run: |
-          curl -sf -X POST "$API/api/maintenance/stale?days=30" \
+          curl -sf --retry 3 --retry-delay 15 --retry-all-errors \
+            -X POST "$API/api/maintenance/stale?days=30" \
             -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
 
       - name: Re-ingest all portals (background)
@@ -56,7 +57,11 @@ jobs:
 
   daily-alerts:
     name: Run daily alert subscriptions
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * *'
+    # Serialize after refresh on manual dispatch — running everything in
+    # parallel can overload the single 512 MB dyno. always() keeps this job
+    # alive on scheduled runs where refresh is skipped.
+    needs: refresh
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * *')
     runs-on: ubuntu-latest
     steps:
       - name: Wake the server
@@ -69,12 +74,14 @@ jobs:
 
       - name: Run daily alerts
         run: |
-          curl -sf -X POST "$API/api/maintenance/alerts?frequency=daily" \
+          curl -sf --retry 3 --retry-delay 15 --retry-all-errors \
+            -X POST "$API/api/maintenance/alerts?frequency=daily" \
             -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
 
   weekly-alerts:
     name: Run weekly alert subscriptions
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 8 * * 1'
+    needs: daily-alerts
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '15 8 * * 1')
     runs-on: ubuntu-latest
     steps:
       - name: Wake the server
@@ -87,5 +94,6 @@ jobs:
 
       - name: Run weekly alerts
         run: |
-          curl -sf -X POST "$API/api/maintenance/alerts?frequency=weekly" \
+          curl -sf --retry 3 --retry-delay 15 --retry-all-errors \
+            -X POST "$API/api/maintenance/alerts?frequency=weekly" \
             -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
