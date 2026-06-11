@@ -40,6 +40,14 @@ export default function MatchWizard({
   file, setFile, isSubmitting, onFiltersChange, onSubmit,
 }: MatchWizardProps) {
   const [step, setStep] = useState(0);
+  // FilterPanel is the heavy subtree (portal grid + dropdowns + data fetches).
+  // Mounting it lazily keeps the tab-switch render cheap; once mounted it
+  // stays mounted so selections survive back/forward navigation.
+  const [prefsMounted, setPrefsMounted] = useState(false);
+  const goStep = (i: number) => {
+    if (i >= 1) setPrefsMounted(true);
+    setStep(i);
+  };
   // Mirror of the latest filters, for the step-3 summary chips.
   const [summary, setSummary] = useState<SearchFilters>({});
 
@@ -85,7 +93,7 @@ export default function MatchWizard({
               )}
               <button
                 type="button"
-                onClick={() => reachable && setStep(i)}
+                onClick={() => reachable && goStep(i)}
                 disabled={!reachable}
                 className={`flex items-center gap-2.5 group ${reachable ? "cursor-pointer" : "cursor-not-allowed"}`}
               >
@@ -96,15 +104,18 @@ export default function MatchWizard({
                       ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30"
                       : "bg-fg/[0.05] text-fg/40 border border-fg/10"
                 }`}>
-                  <AnimatePresence mode="wait" initial={false}>
+                  {/* Crossfade (no mode="wait") so the badge never shows an
+                      empty frame mid-swap; absolute stacking keeps it stable. */}
+                  <AnimatePresence initial={false}>
                     {done ? (
                       <motion.svg key="check" initial={{ scale: 0, rotate: -40 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }}
                         transition={{ type: "spring", stiffness: 500, damping: 26 }}
-                        className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        className="absolute w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </motion.svg>
                     ) : (
-                      <motion.span key="num" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }}>
+                      <motion.span key="num" className="absolute inset-0 flex items-center justify-center"
+                        initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }}>
                         {i + 1}
                       </motion.span>
                     )}
@@ -154,7 +165,7 @@ export default function MatchWizard({
         <ResumeUploader onFileSelected={setFile} disabled={isSubmitting} />
 
         <div className="flex justify-end mt-8">
-          <NextButton disabled={!profileOk} onClick={() => setStep(1)}>
+          <NextButton disabled={!profileOk} onClick={() => goStep(1)}>
             Set Preferences
           </NextButton>
         </div>
@@ -167,10 +178,10 @@ export default function MatchWizard({
 
       {/* ── Step 2: Preferences ── */}
       <WizardStep active={step === 1}>
-        <FilterPanel onFiltersChange={handleFilters} disabled={isSubmitting} />
+        {prefsMounted && <FilterPanel onFiltersChange={handleFilters} disabled={isSubmitting} />}
         <div className="flex justify-between mt-8">
-          <BackButton onClick={() => setStep(0)} />
-          <NextButton onClick={() => setStep(2)}>Review &amp; Launch</NextButton>
+          <BackButton onClick={() => goStep(0)} />
+          <NextButton onClick={() => goStep(2)}>Review &amp; Launch</NextButton>
         </div>
       </WizardStep>
 
@@ -205,7 +216,7 @@ export default function MatchWizard({
         </div>
 
         <div className="flex items-center justify-between gap-4">
-          <BackButton onClick={() => setStep(1)} />
+          <BackButton onClick={() => goStep(1)} />
           <motion.button
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
             onClick={onSubmit}

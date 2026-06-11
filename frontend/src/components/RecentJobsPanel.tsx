@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
-import { searchJobs, type RecentJob, type SearchV2Response, type SearchV2Filters } from "@/lib/api";
+import { searchJobs, type FacetCounts, type RecentJob, type SearchV2Filters } from "@/lib/api";
 import AdvancedSearchPanel from "./AdvancedSearchPanel";
 import JobDetailDrawer from "./JobDetailDrawer";
 import JobDetailBody from "./JobDetailBody";
@@ -13,15 +13,31 @@ import { useMediaQuery } from "@/lib/useMediaQuery";
 const PAGE_SIZE = 10;
 
 // Direction-aware page flip (custom = +1 forward / -1 back). Kept subtle: a
-// gentle slide + slight tilt rather than a strong 3D rotation.
+// gentle slide + slight tilt rather than a strong 3D rotation. The exit is
+// much shorter than the enter — with mode="wait" the exit is dead air, and
+// the server fetch already adds latency before the flip can start.
 const flipVariants = {
-  enter: (d: number) => ({ rotateY: d * 6, opacity: 0, x: d * 24 }),
-  center: { rotateY: 0, opacity: 1, x: 0 },
-  exit: (d: number) => ({ rotateY: d * -6, opacity: 0, x: d * -24 }),
+  enter: (d: number) => ({
+    rotateY: d * 6, opacity: 0, x: d * 24,
+    transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const },
+  }),
+  center: {
+    rotateY: 0, opacity: 1, x: 0,
+    transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] as const },
+  },
+  exit: (d: number) => ({
+    rotateY: d * -6, opacity: 0, x: d * -24,
+    transition: { duration: 0.13, ease: "easeIn" as const },
+  }),
 };
 
 export default function RecentJobsPanel() {
-  const [data, setData] = useState<SearchV2Response | null>(null);
+  // Server-side pagination: each page is its own query (limit/offset), so the
+  // catalogue can grow without a client-side cap. `view` only advances when
+  // fresh data lands — the flip animation always plays over real content.
+  const [view, setView] = useState<{ page: number; jobs: RecentJob[] }>({ page: 0, jobs: [] });
+  const [total, setTotal] = useState(0);
+  const [facets, setFacets] = useState<FacetCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<SearchV2Filters>({});
@@ -38,13 +54,21 @@ export default function RecentJobsPanel() {
   // Anchor for snapping the viewport back to the list top on page flips.
   const listTopRef = useRef<HTMLDivElement>(null);
 
-  const fetchJobs = useCallback((currentFilters: SearchV2Filters) => {
+  const fetchPage = useCallback((currentFilters: SearchV2Filters, pageN: number) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
-    searchJobs({ ...currentFilters, limit: 200 })
+    searchJobs({
+      ...currentFilters,
+      limit: PAGE_SIZE,
+      offset: pageN * PAGE_SIZE,
+      // Facets depend on filters, not the page — only pay for them on page 0.
+      include_facets: pageN === 0,
+    })
       .then((res) => {
         if (reqId !== reqIdRef.current) return;
-        setData(res);
+        setView({ page: pageN, jobs: res.jobs });
+        setTotal(res.total);
+        if (res.facets) setFacets(res.facets);
         setError(null);
       })
       .catch((e) => {
@@ -58,21 +82,17 @@ export default function RecentJobsPanel() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchJobs(filters);
-  }, [filters, fetchJobs]);
+    fetchPage(filters, page);
+  }, [filters, page, fetchPage]);
 
   const handleFiltersChange = useCallback((newFilters: SearchV2Filters) => {
     setFilters(newFilters);
     setPage(0); // new filter set → back to first page
   }, []);
 
-  const jobs = useMemo(() => data?.jobs || [], [data]);
-  const pageCount = Math.max(1, Math.ceil(jobs.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageJobs = useMemo(
-    () => jobs.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE),
-    [jobs, safePage]
-  );
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = view.page;
+  const pageJobs = view.jobs;
 
   // Desktop: keep something selected so the detail pane is never empty.
   // Mobile: selection drives the drawer, so it must stay user-initiated.
@@ -117,14 +137,14 @@ export default function RecentJobsPanel() {
         {/* NOTE: do NOT disable the filters while loading — this is a debounced
             live search, and disabling mid-interaction blocks adding a 2nd
             location/company (pointer-events-none on an open dropdown). */}
-        <AdvancedSearchPanel onFiltersChange={handleFiltersChange} facets={data?.facets || null} totalJobs={data?.total ?? null} />
+        <AdvancedSearchPanel onFiltersChange={handleFiltersChange} facets={facets} totalJobs={total || (loading ? null : 0)} />
       </div>
 
       {error && (
         <div className="mb-8 px-4 py-3 rounded-2xl bg-rose-500/10 border border-rose-400/25 text-sm text-rose-300">{error}</div>
       )}
 
-      {loading && !data && (
+      {loading && pageJobs.length === 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="shimmer h-44 rounded-2xl border border-fg/[0.06]" />
@@ -132,7 +152,7 @@ export default function RecentJobsPanel() {
         </div>
       )}
 
-      {!loading && jobs.length === 0 && !error && (
+      {!loading && total === 0 && !error && (
         <div className="text-center py-16">
           <div className="w-16 h-16 rounded-2xl bg-fg/5 flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-fg/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -144,13 +164,13 @@ export default function RecentJobsPanel() {
         </div>
       )}
 
-      {jobs.length > 0 && (
+      {pageJobs.length > 0 && (
         <div>
           {/* Result header + page controls */}
           <div ref={listTopRef} className="flex items-center justify-between mb-4 scroll-mt-24">
             <p className="text-sm text-fg/60">
-              Showing <span className="text-fg font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, jobs.length)}</span> of{" "}
-              <span className="text-gradient font-bold">{jobs.length}</span> jobs
+              Showing <span className="text-fg font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, total)}</span> of{" "}
+              <span className="text-gradient font-bold">{total}</span> jobs
               {isDesktop && <span className="text-fg/30 text-xs ml-3 hidden xl:inline">↑↓ to browse</span>}
             </p>
             <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} disabled={loading} />
@@ -159,8 +179,10 @@ export default function RecentJobsPanel() {
           {/* xl+: split view (list + sticky detail pane). Below xl: card grid + drawer. */}
           <div className="xl:grid xl:grid-cols-[420px_minmax(0,1fr)] xl:gap-6 xl:items-start">
             <div>
-              {/* Flip-paginated merged list (no source sections) */}
-              <div className="relative" style={{ perspective: 1600 }}>
+              {/* Flip-paginated merged list (no source sections). Dim slightly
+                  while the next page is in flight — the flip plays when it lands. */}
+              <div className={`relative transition-opacity duration-200 ${loading ? "opacity-60" : ""}`}
+                style={{ perspective: 1600 }}>
                 <AnimatePresence mode="wait" custom={dir}>
                   <motion.div
                     key={safePage}
@@ -169,7 +191,6 @@ export default function RecentJobsPanel() {
                     initial="enter"
                     animate="center"
                     exit="exit"
-                    transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
                     style={{ transformStyle: "preserve-3d" }}
                     className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-5 xl:gap-3"
                   >
@@ -192,16 +213,17 @@ export default function RecentJobsPanel() {
               </div>
             </div>
 
-            {/* Sticky detail pane (desktop only) */}
+            {/* Sticky detail pane (desktop only). popLayout crossfades the
+                outgoing job with the incoming one — no empty-pane flash. */}
             <div className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-3xl glass-strong">
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="popLayout" initial={false}>
                 {selected ? (
                   <motion.div
                     key={selected.id}
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -10 }}
-                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    exit={{ opacity: 0, y: -10, transition: { duration: 0.15 } }}
+                    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                   >
                     <JobDetailBody job={selected} />
                   </motion.div>

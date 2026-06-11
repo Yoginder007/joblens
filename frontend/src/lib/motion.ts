@@ -32,9 +32,15 @@ export function staggerContainer(stagger = 0.07, delayChildren = 0): Variants {
   };
 }
 
-/** Tab/phase swap transition for AnimatePresence mode="wait". */
+/** Tab/phase swap transition for AnimatePresence mode="wait".
+ *
+ * Deliberately NO `filter` animation: animating blur is GPU-expensive and a
+ * lingering `filter` turns the container into the containing block for
+ * position:fixed descendants (it once pinned the mobile drawer off-screen).
+ * The exit is kept very short — with mode="wait" the exit duration is dead
+ * time where neither view is on screen. */
 export const swap: Variants = {
-  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
-  show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.4, ease: EASE } },
-  exit: { opacity: 0, y: -12, filter: "blur(4px)", transition: { duration: 0.25, ease: EASE } },
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
+  exit: { opacity: 0, y: -8, transition: { duration: 0.12, ease: "easeIn" } },
 };

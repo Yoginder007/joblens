@@ -17,7 +17,7 @@ import {
   uploadResume,
   pollResumeUntilReady,
   getEligibleJobs,
-  getRecentJobs,
+  searchJobs,
   type SearchFilters,
   type EligibleJobsResponse,
 } from "@/lib/api";
@@ -56,10 +56,9 @@ export default function Home() {
   const filtersRef = useRef<SearchFilters>({});
 
   useEffect(() => {
-    // limit=500 (API max) so the count reflects the real catalogue size, not
-    // the default page cap.
-    getRecentJobs(60, undefined, undefined, 500)
-      .then((jobs) => setBrowseJobCount(jobs.length))
+    // Exact catalogue size from the search total (uncapped, one cheap query).
+    searchJobs({ limit: 1, include_facets: false })
+      .then((res) => setBrowseJobCount(res.total))
       .catch(() => setBrowseJobCount(0));
   }, []);
 
@@ -170,7 +169,7 @@ export default function Home() {
 
         {/* ── Header ── */}
         <header className="sticky top-0 z-30">
-          <div className={`border-x-0 border-t-0 transition-all duration-300 ${scrolled ? "header-solid" : "glass"}`}>
+          <div className={`border-x-0 border-t-0 transition-all duration-150 ${scrolled ? "header-solid" : "glass"}`}>
             <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
               <motion.div
                 initial={{ opacity: 0, x: -16 }}
