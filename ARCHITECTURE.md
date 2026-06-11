@@ -123,7 +123,7 @@ Postgres concern only.
 
 | Decision | Why | Trade-off |
 |----------|-----|-----------|
-| Deterministic embeddings in prod | `sentence-transformers`+torch needs >512 MB; free tier has 512 MB | Semantic signal is approximate in the hosted demo; **Direct Filter** mode sidesteps this |
+| Gemini API embeddings in prod (`gemini-embedding-001`) | `sentence-transformers`+torch needs >512 MB; free tier has 512 MB — an HTTP call needs ~0 | Real semantic vectors with no local model: résumés embed as `RETRIEVAL_QUERY`, jobs as `RETRIEVAL_DOCUMENT`, MRL-truncated to 384 dims + re-normalised so the pgvector schema stays provider-agnostic. Provider switches re-vector everything via key-protected `POST /api/reembed` (batched, rate-limit-aware) |
 | Eager Celery in prod | avoids a paid Redis instance | no distributed worker pool in the demo (fine at demo scale) |
 | Dialect-aware types vs. two model sets | one source of truth for models | a thin custom `TypeDecorator` layer to maintain |
 | Bearer token (hashed) auth | scopes résumé PII without a full auth stack | not full session/OAuth (a documented next step) |
@@ -131,8 +131,9 @@ Postgres concern only.
 ## 8. Testing
 
 - **Backend:** `pytest` over the pure matching engine, skill normalization,
-  scrapers/URL parsing, and config — run with `EMBEDDING_PROVIDER=deterministic`
-  so no model download is needed (52 tests).
+  scrapers/URL parsing, auth, config, and the Gemini provider (HTTP mocked) —
+  run with `EMBEDDING_PROVIDER=deterministic` so no network or model download
+  is needed (75 tests).
 - **Frontend:** `npm run lint` + `npm run build` (type-checks the whole tree).
 - **CI:** GitHub Actions provisions a pgvector Postgres service and runs
   migrations + tests against the **real** database path.

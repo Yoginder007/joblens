@@ -18,7 +18,11 @@
 ## What it does
 
 - **Résumé upload → structured parse → embedding.** A PDF is parsed (experience,
-  skills, title) and embedded into a 384-dim vector.
+  skills, title) and embedded into a 384-dim vector. Production embeddings come
+  from **Gemini (`gemini-embedding-001`)** — résumés embed as retrieval
+  *queries* and jobs as retrieval *documents*, MRL-truncated to 384 dims and
+  re-normalised, so real semantic vectors fit the same pgvector schema (and the
+  free hosting tier, since inference is an API call rather than a local model).
 - **Two matching modes.**
   - **Smart Match** — `0.6 × semantic (pgvector cosine) + 0.4 × skill overlap`.
   - **Direct Filter** — skill-overlap only, driven by the user's hard filters
@@ -69,11 +73,14 @@ frontend/src/
 
 - **System design:** clean layering, a repository pattern, race-safe upserts
   (`INSERT … ON CONFLICT`), and a single schema that targets two databases.
-- **Applied ML/IR:** vector embeddings + approximate-nearest-neighbour search
-  with a transparent, weighted scoring function.
+- **Applied ML/IR:** real Gemini embeddings with asymmetric task types
+  (query vs document), approximate-nearest-neighbour search over pgvector, and
+  a transparent, weighted scoring function — behind a pluggable provider so
+  tests/CI run fully offline on deterministic vectors.
 - **Production thinking:** Alembic-owned schema, env-driven config with a
   production-secret guard, CORS, bearer-token auth scoping résumé PII, and a
-  memory-aware deploy (torch-free embedding provider for free-tier hosting).
+  memory-aware deploy (API-based embeddings — no torch — for free-tier hosting,
+  with batched, rate-limit-aware re-embedding via a key-protected endpoint).
 - **Frontend craft:** a cohesive dark/light "aurora" design system on CSS
   variables, accessible custom comboboxes, and purposeful motion.
 

@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -18,7 +18,11 @@ from app.domains.ingestion.scrapers import (
     available_portals,
     run_scraper_for_company,
 )
-from app.domains.ingestion.service import IngestionService
+from app.domains.ingestion.service import (
+    REEMBED_STATUS,
+    IngestionService,
+    reembed_all,
+)
 from app.domains.jobs.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
@@ -71,3 +75,22 @@ def ingest_portals(payload: IngestRequest, db: Session = Depends(get_db)):
         total_inserted=sum(r.inserted for r in results),
         total_updated=sum(r.updated for r in results),
     )
+
+
+@router.post("/reembed", status_code=202, dependencies=[Depends(verify_api_key)])
+def trigger_reembed(background: BackgroundTasks):
+    """Regenerate all vectors with the current embedding provider.
+
+    Run once after switching EMBEDDING_PROVIDER (vectors from different
+    providers are incompatible). Long-running, so it executes as a background
+    task — poll ``GET /api/reembed/status`` for progress.
+    """
+    if REEMBED_STATUS.get("state") == "running":
+        return {"status": "already-running", **REEMBED_STATUS}
+    background.add_task(reembed_all)
+    return {"status": "started"}
+
+
+@router.get("/reembed/status", dependencies=[Depends(verify_api_key)])
+def reembed_status():
+    return REEMBED_STATUS

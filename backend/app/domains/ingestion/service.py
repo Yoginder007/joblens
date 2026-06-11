@@ -6,6 +6,7 @@ On PostgreSQL, upserts are race-safe via ``INSERT ... ON CONFLICT`` on the
 simple check-then-write is used — there is no concurrent writer to race with.
 """
 import logging
+import time
 
 from sqlalchemy import literal_column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -93,3 +94,87 @@ class IngestionService:
             source, inserted, updated, len(jobs),
         )
         return inserted, updated
+
+
+# ── Re-embedding (provider migrations) ───────────────────────────────────────
+# Regenerates every vector with the CURRENT embedding provider. Needed once
+# after switching providers (e.g. deterministic → gemini): vectors from
+# different providers live in incompatible spaces, so they must all be redone
+# together. Runs as a FastAPI background task on free tiers with no shell —
+# progress is exposed via REEMBED_STATUS.
+
+REEMBED_STATUS: dict = {"state": "idle"}
+
+
+def reembed_all(limit: int | None = None, pause_s: float = 15.0) -> dict:
+    """Re-embed active jobs (RETRIEVAL_DOCUMENT) and ready résumés
+    (RETRIEVAL_QUERY) in batches, pausing between batches to respect the
+    free-tier tokens-per-minute budget. Opens its own session (runs outside
+    the request lifecycle). Returns counts; mirrors progress in REEMBED_STATUS."""
+    import app.db.base  # noqa: F401  (registers all mappers for CLI usage)
+    from app.core.config import get_settings
+    from app.core.database import SessionLocal
+    from app.domains.resumes.models import Resume
+    from app.services.embedding import (
+        GEMINI_BATCH_SIZE,
+        TASK_QUERY,
+        embed_resume,
+        embed_texts,
+        job_embedding_text,
+    )
+
+    settings = get_settings()
+    status = REEMBED_STATUS
+    status.update(state="running", provider=settings.EMBEDDING_PROVIDER,
+                  jobs_done=0, jobs_total=0, resumes_done=0, error=None)
+
+    db = SessionLocal()
+    try:
+        jobs = db.scalars(
+            select(Job).where(Job.is_active.is_(True)).order_by(Job.scraped_at.desc())
+        ).all()
+        if limit is not None:
+            jobs = jobs[:limit]
+        status["jobs_total"] = len(jobs)
+
+        pause = pause_s if settings.EMBEDDING_PROVIDER == "gemini" else 0.0
+        for i in range(0, len(jobs), GEMINI_BATCH_SIZE):
+            chunk = jobs[i:i + GEMINI_BATCH_SIZE]
+            texts = [
+                job_embedding_text(j.title, j.description or "", j.technical_skills or [])
+                for j in chunk
+            ]
+            vectors = embed_texts(texts)
+            for job, vec in zip(chunk, vectors):
+                job.embedding = vec
+            db.commit()
+            status["jobs_done"] = min(i + GEMINI_BATCH_SIZE, len(jobs))
+            logger.info("Re-embed: %d/%d jobs", status["jobs_done"], len(jobs))
+            if pause and i + GEMINI_BATCH_SIZE < len(jobs):
+                time.sleep(pause)
+
+        resumes = db.scalars(
+            select(Resume).where(Resume.status == "ready")
+        ).all()
+        if limit is not None:
+            resumes = resumes[:limit]
+        for resume in resumes:
+            if resume.parsed_data:
+                resume.embedding = embed_resume(resume.parsed_data)
+                status["resumes_done"] = status.get("resumes_done", 0) + 1
+        db.commit()
+        logger.info("Re-embed: %d resumes (task=%s)", status["resumes_done"], TASK_QUERY)
+
+        status["state"] = "done"
+        return {
+            "jobs": status["jobs_done"],
+            "resumes": status["resumes_done"],
+            "provider": settings.EMBEDDING_PROVIDER,
+        }
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        status.update(state="failed", error=str(exc)[:300])
+        logger.exception("Re-embed failed")
+        raise
+    finally:
+        db.close()

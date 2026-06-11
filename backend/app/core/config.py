@@ -43,11 +43,17 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
 
     # ── Embeddings ───────────────────────────────────────────────────────
-    EMBEDDING_PROVIDER: Literal["sentence-transformers", "deterministic"] = (
+    # "gemini" = real semantic vectors via the Gemini API (fits the free
+    # hosting tier because inference is an HTTP call, not a local model).
+    # Output is MRL-truncated to EMBEDDING_DIMENSION, so the pgvector column
+    # and HNSW index stay at 384 — no schema migration when switching.
+    EMBEDDING_PROVIDER: Literal["sentence-transformers", "deterministic", "gemini"] = (
         "sentence-transformers"
     )
     EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     EMBEDDING_DIMENSION: int = 384
+    GOOGLE_API_KEY: str = ""
+    GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     # ── File storage ─────────────────────────────────────────────────────
     UPLOAD_DIR: str = "/data/uploads"
@@ -121,6 +127,10 @@ class Settings(BaseSettings):
                 raise ValueError("DB_PASSWORD must be changed in production")
         if abs((self.SEMANTIC_WEIGHT + self.SKILL_WEIGHT) - 1.0) > 1e-6:
             raise ValueError("SEMANTIC_WEIGHT + SKILL_WEIGHT must sum to 1.0")
+        if self.EMBEDDING_PROVIDER == "gemini" and not self.GOOGLE_API_KEY:
+            raise ValueError(
+                "EMBEDDING_PROVIDER=gemini requires GOOGLE_API_KEY to be set"
+            )
         return self
 
 

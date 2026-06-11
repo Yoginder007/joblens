@@ -4,8 +4,11 @@
 # DATABASE_URL below in the Render dashboard — Render's own free Postgres does
 # NOT support the pgvector extension.
 #
-# Memory: free instances have 512 MB, so we run EMBEDDING_PROVIDER=deterministic
-# (no torch) and CELERY_TASK_ALWAYS_EAGER=true (no separate worker/Redis).
+# Memory: free instances have 512 MB, so embeddings come from the Gemini API
+# (EMBEDDING_PROVIDER=gemini — an HTTP call, no torch in the image) and
+# CELERY_TASK_ALWAYS_EAGER=true (no separate worker/Redis).
+# After switching providers, regenerate vectors once:
+#   POST /api/reembed (X-API-Key) → poll GET /api/reembed/status
 services:
   - type: web
     name: joblens-api
@@ -20,7 +23,7 @@ services:
       - key: ENVIRONMENT
         value: production
       - key: EMBEDDING_PROVIDER
-        value: deterministic
+        value: gemini
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "true"
       - key: VERIFY_JOB_URLS
@@ -34,6 +37,8 @@ services:
         sync: false                # Neon connection string (postgresql+psycopg2://…)
       - key: SCRAPER_API_KEY
         sync: false                # any strong random string
+      - key: GOOGLE_API_KEY
+        sync: false                # Gemini API key (embeddings)
       - key: CORS_ORIGINS
         sync: false                # https://<your-vercel-app>.vercel.app
       - key: ADZUNA_APP_ID
