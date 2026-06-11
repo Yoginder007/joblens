@@ -124,16 +124,18 @@ Postgres concern only.
 | Decision | Why | Trade-off |
 |----------|-----|-----------|
 | Gemini API embeddings in prod (`gemini-embedding-001`) | `sentence-transformers`+torch needs >512 MB; free tier has 512 MB — an HTTP call needs ~0 | Real semantic vectors with no local model: résumés embed as `RETRIEVAL_QUERY`, jobs as `RETRIEVAL_DOCUMENT`, MRL-truncated to 384 dims + re-normalised so the pgvector schema stays provider-agnostic. Provider switches re-vector everything via key-protected `POST /api/reembed` (batched, rate-limit-aware) |
-| Eager Celery in prod | avoids a paid Redis instance | no distributed worker pool in the demo (fine at demo scale) |
+| Eager Celery in prod | avoids a paid Redis instance | no distributed worker pool in the demo (fine at demo scale); Beat schedules are driven by a GitHub Actions cron hitting key-protected `/api/maintenance/*` + background `/api/ingest` endpoints |
+| LLM résumé parsing (Gemini Flash, JSON-schema output) with regex fallback | structured extraction beats keyword regex on any layout | parsing degrades gracefully offline/over-quota — `parsed_data.parser` records which engine produced each result |
 | Dialect-aware types vs. two model sets | one source of truth for models | a thin custom `TypeDecorator` layer to maintain |
 | Bearer token (hashed) auth | scopes résumé PII without a full auth stack | not full session/OAuth (a documented next step) |
 
 ## 8. Testing
 
 - **Backend:** `pytest` over the pure matching engine, skill normalization,
-  scrapers/URL parsing, auth, config, and the Gemini provider (HTTP mocked) —
-  run with `EMBEDDING_PROVIDER=deterministic` so no network or model download
-  is needed (75 tests).
+  scrapers/URL parsing, auth, config, the Gemini embedding provider + LLM
+  parser (HTTP mocked), and the maintenance endpoints — run with
+  `EMBEDDING_PROVIDER=deterministic` so no network or model download is
+  needed (84 tests).
 - **Frontend:** `npm run lint` + `npm run build` (type-checks the whole tree).
 - **CI:** GitHub Actions provisions a pgvector Postgres service and runs
   migrations + tests against the **real** database path.

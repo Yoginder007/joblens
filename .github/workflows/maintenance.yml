@@ -1,0 +1,91 @@
+# Scheduled production maintenance.
+#
+# The free-tier deploy runs no Celery beat process, so this workflow drives the
+# pipeline instead: nightly catalogue refresh + stale cleanup, and the daily /
+# weekly alert runs. Requires the SCRAPER_API_KEY repository secret (same value
+# as the Render env var).
+name: Scheduled maintenance
+
+on:
+  schedule:
+    - cron: "30 2 * * *"   # 02:30 UTC daily  — refresh catalogue + stale cleanup
+    - cron: "0 8 * * *"    # 08:00 UTC daily  — daily alerts
+    - cron: "15 8 * * 1"   # 08:15 UTC Monday — weekly alerts
+  workflow_dispatch: {}    # manual run (executes all jobs)
+
+env:
+  API: https://joblens-api-xi3l.onrender.com
+
+jobs:
+  refresh:
+    name: Refresh catalogue + deactivate stale jobs
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 2 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the server (free tier cold-starts)
+        run: |
+          for i in $(seq 1 12); do
+            curl -sf "$API/api/health" > /dev/null && exit 0
+            sleep 15
+          done
+          echo "server did not wake in time" && exit 1
+
+      - name: Deactivate stale jobs (not re-scraped in 30 days)
+        run: |
+          curl -sf -X POST "$API/api/maintenance/stale?days=30" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
+
+      - name: Re-ingest all portals (background)
+        run: |
+          curl -sf -X POST "$API/api/ingest" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"background": true}'
+
+      - name: Poll ingest until done (keeps the dyno alive for the run)
+        run: |
+          for i in $(seq 1 40); do
+            sleep 30
+            state=$(curl -sf "$API/api/ingest/status" \
+              -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state","?"))')
+            echo "poll $i: $state"
+            [ "$state" = "done" ] && exit 0
+            [ "$state" = "failed" ] && exit 1
+          done
+          echo "timed out waiting for ingest" && exit 1
+
+  daily-alerts:
+    name: Run daily alert subscriptions
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the server
+        run: |
+          for i in $(seq 1 12); do
+            curl -sf "$API/api/health" > /dev/null && exit 0
+            sleep 15
+          done
+          echo "server did not wake in time" && exit 1
+
+      - name: Run daily alerts
+        run: |
+          curl -sf -X POST "$API/api/maintenance/alerts?frequency=daily" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
+
+  weekly-alerts:
+    name: Run weekly alert subscriptions
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '15 8 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the server
+        run: |
+          for i in $(seq 1 12); do
+            curl -sf "$API/api/health" > /dev/null && exit 0
+            sleep 15
+          done
+          echo "server did not wake in time" && exit 1
+
+      - name: Run weekly alerts
+        run: |
+          curl -sf -X POST "$API/api/maintenance/alerts?frequency=weekly" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"

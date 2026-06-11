@@ -13,17 +13,14 @@ from app.domains.ingestion.schemas import (
     ScraperWebhookPayload,
     WebhookResponse,
 )
-from app.domains.ingestion.scrapers import (
-    CAREER_PAGES,
-    available_portals,
-    run_scraper_for_company,
-)
+from app.domains.ingestion.scrapers import available_portals
 from app.domains.ingestion.service import (
+    INGEST_STATUS,
     REEMBED_STATUS,
     IngestionService,
+    ingest_all,
     reembed_all,
 )
-from app.domains.jobs.schemas import JobCreate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Ingestion"])
@@ -49,32 +46,52 @@ def list_portals():
 
 
 @router.post("/ingest", response_model=IngestResponse, dependencies=[Depends(verify_api_key)])
-def ingest_portals(payload: IngestRequest, db: Session = Depends(get_db)):
+def ingest_portals(payload: IngestRequest, background: BackgroundTasks):
     """Fetch + upsert jobs for the selected companies (all configured if empty).
 
-    Runs synchronously so the caller (seed script / admin) gets per-company
-    results. Each company's jobs are stored with ``source = company`` so the UI
-    can group by portal.
+    ``background=true`` schedules the run and returns immediately (a full
+    20-portal fetch can exceed the free-tier proxy timeout) — poll
+    ``GET /api/ingest/status``. Otherwise runs synchronously and returns
+    per-company results. Each company's jobs are stored with
+    ``source = company`` so the UI can group by portal.
     """
-    companies = payload.companies or list(CAREER_PAGES.keys())
-    results: list[IngestResult] = []
-    svc = IngestionService(db)
-    for company in companies:
-        try:
-            raw = run_scraper_for_company(company)
-            jobs = [JobCreate(**data) for data in raw]
-            inserted, updated = svc.ingest(company, jobs)
-            results.append(IngestResult(company=company, inserted=inserted, updated=updated))
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("Ingest failed for %s", company)
-            results.append(IngestResult(company=company, inserted=0, updated=0, error=str(exc)[:200]))
+    if payload.background:
+        if INGEST_STATUS.get("state") == "running":
+            return IngestResponse(status="already-running", results=[], total_inserted=0, total_updated=0)
+        background.add_task(ingest_all, payload.companies or None)
+        return IngestResponse(status="started", results=[], total_inserted=0, total_updated=0)
 
+    out = ingest_all(payload.companies or None)
     return IngestResponse(
         status="ok",
-        results=results,
-        total_inserted=sum(r.inserted for r in results),
-        total_updated=sum(r.updated for r in results),
+        results=[IngestResult(**r) for r in out["results"]],
+        total_inserted=out["total_inserted"],
+        total_updated=out["total_updated"],
     )
+
+
+@router.get("/ingest/status", dependencies=[Depends(verify_api_key)])
+def ingest_status():
+    return INGEST_STATUS
+
+
+# ── Scheduled maintenance (driven by GitHub Actions cron on the free tier,
+#    where no Celery beat process runs) ─────────────────────────────────────
+
+@router.post("/maintenance/stale", dependencies=[Depends(verify_api_key)])
+def maintenance_stale(days: int = 30):
+    """Deactivate jobs not seen by any scrape in the last ``days`` days."""
+    from app.workers.tasks import deactivate_stale_jobs
+
+    return deactivate_stale_jobs(days)
+
+
+@router.post("/maintenance/alerts", dependencies=[Depends(verify_api_key)])
+def maintenance_alerts(frequency: str = "daily"):
+    """Run all active subscriptions for the given frequency (daily/weekly)."""
+    from app.workers.tasks import run_subscriptions
+
+    return run_subscriptions(frequency)
 
 
 @router.post("/reembed", status_code=202, dependencies=[Depends(verify_api_key)])

@@ -96,6 +96,55 @@ class IngestionService:
         return inserted, updated
 
 
+# ── Full ingestion run (scheduled refresh / admin) ───────────────────────────
+# One function both the sync API path and the background path share. The
+# scheduled GitHub Actions workflow triggers it in background mode because
+# fetching 20 portals can exceed the free-tier proxy timeout.
+
+INGEST_STATUS: dict = {"state": "idle"}
+
+
+def ingest_all(companies: list[str] | None = None) -> dict:
+    """Fetch + upsert jobs for the given companies (all configured if None).
+    Opens its own session; mirrors progress into INGEST_STATUS."""
+    from app.core.database import SessionLocal
+    from app.domains.ingestion.scrapers import CAREER_PAGES, run_scraper_for_company
+
+    todo = companies or list(CAREER_PAGES.keys())
+    status = INGEST_STATUS
+    status.update(state="running", done=0, total=len(todo), error=None)
+
+    db = SessionLocal()
+    try:
+        svc = IngestionService(db)
+        results: list[dict] = []
+        for company in todo:
+            try:
+                raw = run_scraper_for_company(company)
+                jobs = [JobCreate(**data) for data in raw]
+                inserted, updated = svc.ingest(company, jobs)
+                results.append({"company": company, "inserted": inserted,
+                                "updated": updated, "error": None})
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("Ingest failed for %s", company)
+                db.rollback()
+                results.append({"company": company, "inserted": 0, "updated": 0,
+                                "error": str(exc)[:200]})
+            status["done"] = len(results)
+            status["results"] = results
+        status["state"] = "done"
+        return {
+            "results": results,
+            "total_inserted": sum(r["inserted"] for r in results),
+            "total_updated": sum(r["updated"] for r in results),
+        }
+    except Exception as exc:  # noqa: BLE001
+        status.update(state="failed", error=str(exc)[:300])
+        raise
+    finally:
+        db.close()
+
+
 # ── Re-embedding (provider migrations) ───────────────────────────────────────
 # Regenerates every vector with the CURRENT embedding provider. Needed once
 # after switching providers (e.g. deterministic → gemini): vectors from

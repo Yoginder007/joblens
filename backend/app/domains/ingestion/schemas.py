@@ -25,6 +25,9 @@ class PortalInfo(BaseModel):
 class IngestRequest(BaseModel):
     """Trigger ingestion for selected companies (or all when empty)."""
     companies: list[str] = Field(default_factory=list)
+    # True → run as a background task (free-tier proxies time out long syncs);
+    # poll GET /api/ingest/status for progress.
+    background: bool = False
 
 
 class IngestResult(BaseModel):

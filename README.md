@@ -17,8 +17,11 @@
 
 ## What it does
 
-- **Résumé upload → structured parse → embedding.** A PDF is parsed (experience,
-  skills, title) and embedded into a 384-dim vector. Production embeddings come
+- **Résumé upload → structured parse → embedding.** A PDF is parsed into a
+  structured profile by **Gemini Flash structured extraction** (JSON-schema
+  output: title, years, categorised skills, domains, education) with a
+  deterministic regex fallback so uploads never break on provider issues —
+  then embedded into a 384-dim vector. Production embeddings come
   from **Gemini (`gemini-embedding-001`)** — résumés embed as retrieval
   *queries* and jobs as retrieval *documents*, MRL-truncated to 384 dims and
   re-normalised, so real semantic vectors fit the same pgvector schema (and the
@@ -39,7 +42,9 @@
   location (incl. whole-country) and company filters, quick experience presets,
   flip pagination, and a job-detail drawer.
 - **Continuous alerts.** Subscribe a résumé and a scheduled worker pushes only
-  the *new* matches over time.
+  the *new* matches over time. In the free-tier deploy the schedule is driven
+  by a GitHub Actions cron (nightly catalogue refresh + stale-job cleanup,
+  daily/weekly alert runs) hitting key-protected maintenance endpoints.
 
 ## Architecture
 

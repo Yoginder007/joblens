@@ -24,6 +24,8 @@ services:
         value: production
       - key: EMBEDDING_PROVIDER
         value: gemini
+      - key: RESUME_PARSER
+        value: gemini              # LLM structured extraction; falls back to regex
       - key: CELERY_TASK_ALWAYS_EAGER
         value: "true"
       - key: VERIFY_JOB_URLS
