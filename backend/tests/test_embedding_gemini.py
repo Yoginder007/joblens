@@ -11,6 +11,7 @@ os.environ.setdefault("CELERY_TASK_ALWAYS_EAGER", "true")
 
 from app.core.config import Settings, get_settings  # noqa: E402
 from app.services import embedding  # noqa: E402
+from app.services import gemini as gemini_svc  # noqa: E402
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ def test_embed_text_gemini_returns_normalized_vector(gemini_settings, monkeypatc
         captured["payload"] = payload
         return {"embedding": {"values": _fake_vector(gemini_settings.EMBEDDING_DIMENSION)}}
 
-    monkeypatch.setattr(embedding, "_gemini_post", fake_post)
+    monkeypatch.setattr(gemini_svc, "gemini_post", fake_post)
     vec = embedding.embed_text("senior python engineer", task=embedding.TASK_QUERY)
 
     assert len(vec) == gemini_settings.EMBEDDING_DIMENSION
@@ -67,7 +68,7 @@ def test_embed_resume_uses_query_task(gemini_settings, monkeypatch):
         captured["task"] = payload["taskType"]
         return {"embedding": {"values": _fake_vector(gemini_settings.EMBEDDING_DIMENSION)}}
 
-    monkeypatch.setattr(embedding, "_gemini_post", fake_post)
+    monkeypatch.setattr(gemini_svc, "gemini_post", fake_post)
     embedding.embed_resume({"current_title": "Backend Engineer", "technical_skills": ["Python"]})
     assert captured["task"] == "RETRIEVAL_QUERY"
 
@@ -87,7 +88,7 @@ def test_embed_texts_batches_and_preserves_order(gemini_settings, monkeypatch):
             for i in range(n)
         ]}
 
-    monkeypatch.setattr(embedding, "_gemini_post", fake_post)
+    monkeypatch.setattr(gemini_svc, "gemini_post", fake_post)
     texts = [f"job {i}" for i in range(embedding.GEMINI_BATCH_SIZE + 3)]
     out = embedding.embed_texts(texts)
 
@@ -108,7 +109,7 @@ def test_embed_texts_non_gemini_maps_embed_text(monkeypatch):
 # ── Retry behaviour ──────────────────────────────────────────────────────────
 
 def test_gemini_retries_on_429_then_succeeds(gemini_settings, monkeypatch):
-    monkeypatch.setattr(embedding.time, "sleep", lambda s: None)
+    monkeypatch.setattr(gemini_svc.time, "sleep", lambda s: None)
     attempts = {"n": 0}
 
     def flaky_post(path, payload):
@@ -120,7 +121,7 @@ def test_gemini_retries_on_429_then_succeeds(gemini_settings, monkeypatch):
             )
         return {"embedding": {"values": _fake_vector(gemini_settings.EMBEDDING_DIMENSION)}}
 
-    monkeypatch.setattr(embedding, "_gemini_post", flaky_post)
+    monkeypatch.setattr(gemini_svc, "gemini_post", flaky_post)
     vec = embedding.embed_text("hello")
     assert attempts["n"] == 3
     assert len(vec) == gemini_settings.EMBEDDING_DIMENSION
@@ -133,6 +134,6 @@ def test_gemini_raises_on_non_retryable_error(gemini_settings, monkeypatch):
             "bad request", request=req, response=httpx.Response(400, request=req)
         )
 
-    monkeypatch.setattr(embedding, "_gemini_post", bad_post)
+    monkeypatch.setattr(gemini_svc, "gemini_post", bad_post)
     with pytest.raises(httpx.HTTPStatusError):
         embedding.embed_text("hello")

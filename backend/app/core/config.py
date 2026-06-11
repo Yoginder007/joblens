@@ -55,6 +55,13 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
+    # ── Résumé parsing ───────────────────────────────────────────────────
+    # "gemini" = LLM structured extraction (Gemini Flash, JSON-schema output)
+    # with automatic fallback to the regex parser on any failure — parsing
+    # degrades gracefully, unlike embeddings which must never mix providers.
+    RESUME_PARSER: Literal["regex", "gemini"] = "regex"
+    GEMINI_PARSE_MODEL: str = "gemini-2.5-flash"
+
     # ── File storage ─────────────────────────────────────────────────────
     UPLOAD_DIR: str = "/data/uploads"
     MAX_FILE_SIZE_MB: int = 10
@@ -130,6 +137,10 @@ class Settings(BaseSettings):
         if self.EMBEDDING_PROVIDER == "gemini" and not self.GOOGLE_API_KEY:
             raise ValueError(
                 "EMBEDDING_PROVIDER=gemini requires GOOGLE_API_KEY to be set"
+            )
+        if self.RESUME_PARSER == "gemini" and not self.GOOGLE_API_KEY:
+            raise ValueError(
+                "RESUME_PARSER=gemini requires GOOGLE_API_KEY to be set"
             )
         return self
 

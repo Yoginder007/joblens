@@ -20,23 +20,20 @@ therefore yields the same vector across restarts.
 import hashlib
 import logging
 import threading
-import time
 
-import httpx
 import numpy as np
 
 from app.core.config import get_settings
+from app.services.gemini import gemini_call
 
 logger = logging.getLogger(__name__)
 
 TASK_DOCUMENT = "RETRIEVAL_DOCUMENT"
 TASK_QUERY = "RETRIEVAL_QUERY"
 
-_GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta"
 # batchEmbedContents accepts up to 100 items; 50 keeps each call comfortably
 # inside the free-tier tokens-per-minute budget.
 GEMINI_BATCH_SIZE = 50
-_RETRYABLE = {429, 500, 502, 503, 504}
 _MAX_CHARS = 2000
 
 _lock = threading.Lock()
@@ -67,49 +64,10 @@ def _normalize(vec: np.ndarray) -> np.ndarray:
     return vec
 
 
-# ── Gemini REST client ───────────────────────────────────────────────────────
-
-def _gemini_post(path: str, payload: dict) -> dict:
-    """Single HTTP call — kept as a thin seam so tests can mock it.
-
-    The key travels in a header (never the URL) so it can't leak into
-    exception messages or access logs.
-    """
-    settings = get_settings()
-    resp = httpx.post(
-        f"{_GEMINI_BASE}/{path}",
-        json=payload,
-        headers={"x-goog-api-key": settings.GOOGLE_API_KEY},
-        timeout=30.0,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _gemini_call(path: str, payload: dict, attempts: int = 4) -> dict:
-    """Call with exponential backoff on rate limits / transient errors.
-
-    Raises on persistent failure — we never silently fall back to the
-    deterministic provider, which would poison the vector space with
-    incompatible embeddings.
-    """
-    delay = 2.0
-    for attempt in range(attempts):
-        try:
-            return _gemini_post(path, payload)
-        except httpx.HTTPStatusError as exc:
-            status = exc.response.status_code
-            if status not in _RETRYABLE or attempt == attempts - 1:
-                raise
-            logger.warning("Gemini HTTP %s — retry %d in %.0fs", status, attempt + 1, delay)
-        except httpx.HTTPError as exc:
-            if attempt == attempts - 1:
-                raise
-            logger.warning("Gemini transport error (%s) — retry %d in %.0fs", exc, attempt + 1, delay)
-        time.sleep(delay)
-        delay *= 3
-    raise RuntimeError("unreachable")  # pragma: no cover
-
+# ── Gemini request shaping ───────────────────────────────────────────────────
+# Embedding calls never fall back silently on failure: vectors from another
+# provider would poison the search space, so gemini_call's exception
+# propagates up to the task/caller.
 
 def _gemini_request_body(text: str, task: str, settings) -> dict:
     return {
@@ -134,7 +92,7 @@ def embed_text(text: str, task: str = TASK_DOCUMENT) -> list[float]:
         rng = np.random.RandomState(_stable_seed(text))
         vec = rng.randn(settings.EMBEDDING_DIMENSION).astype(np.float32)
     elif settings.EMBEDDING_PROVIDER == "gemini":
-        data = _gemini_call(
+        data = gemini_call(
             f"models/{settings.GEMINI_EMBEDDING_MODEL}:embedContent",
             _gemini_request_body(text, task, settings),
         )
@@ -158,7 +116,7 @@ def embed_texts(texts: list[str], task: str = TASK_DOCUMENT) -> list[list[float]
     out: list[list[float]] = []
     for i in range(0, len(texts), GEMINI_BATCH_SIZE):
         chunk = texts[i:i + GEMINI_BATCH_SIZE]
-        data = _gemini_call(
+        data = gemini_call(
             f"models/{settings.GEMINI_EMBEDDING_MODEL}:batchEmbedContents",
             {"requests": [_gemini_request_body(_clean(t), task, settings) for t in chunk]},
         )
