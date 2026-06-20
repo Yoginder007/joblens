@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { getFilterOptions, type FilterOptions, type SearchV2Filters, type FacetCounts } from "@/lib/api";
+import { type SearchV2Filters, type FacetCounts } from "@/lib/api";
 import Dropdown, { type DropdownOption } from "./Dropdown";
 import MultiDropdown from "./MultiDropdown";
+import { useFilterOptions } from "@/lib/useFilterOptions";
 
 interface Props {
   onFiltersChange: (filters: SearchV2Filters) => void;
@@ -56,17 +57,14 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
   const [companies, setCompanies] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"date" | "relevance" | "salary">("date");
   const [preset, setPreset] = useState<string>(""); // active experience preset id
-  const [opts, setOpts] = useState<FilterOptions | null>(null);
+  // Shared with the match filter UI (countries-first location dedupe etc.).
+  const { opts, locationOptions, titleOptions, companyOptions } = useFilterOptions();
   // Collapsed by default so job results are visible above the fold; the panel
   // expands on demand. `settled` releases overflow clipping once the expand
   // animation finishes (the dropdown menus are absolutely positioned and must
   // be allowed to overflow the panel).
   const [expanded, setExpanded] = useState(false);
   const [settled, setSettled] = useState(false);
-
-  useEffect(() => {
-    getFilterOptions().then(setOpts).catch(console.error);
-  }, []);
 
   const activePreset = EXPERIENCE_PRESETS.find((p) => p.id === preset);
 
@@ -90,34 +88,6 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
     return () => clearTimeout(timeout);
   }, [q, locations, workModel, industry, jobType, postedWithin, companies, sortBy, activePreset, onFiltersChange]);
 
-  const titleOptions = useMemo<DropdownOption[]>(
-    () => (opts?.titles || []).map((t) => ({ value: t, label: t })),
-    [opts]
-  );
-  // Countries first (pick a whole country), then specific cities from the data.
-  // Dedupe by lowercased value so a country (e.g. "Canada") and an identically
-  // named data location don't produce duplicate options / colliding React keys.
-  const locationOptions = useMemo<DropdownOption[]>(() => {
-    const seen = new Set<string>();
-    const out: DropdownOption[] = [];
-    for (const c of opts?.countries || []) {
-      const key = c.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ value: c, label: `${c} — all`, hint: "country" });
-    }
-    for (const l of opts?.locations || []) {
-      const key = l.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ value: l, label: l });
-    }
-    return out;
-  }, [opts]);
-  const companyOptions = useMemo<DropdownOption[]>(
-    () => (opts?.companies || []).map((c) => ({ value: c, label: c })),
-    [opts]
-  );
   const workModelOptions = useMemo<DropdownOption[]>(() => {
     const vals = opts?.work_models?.length ? opts.work_models : ["remote", "hybrid", "on-site"];
     return [
@@ -180,7 +150,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
         className="w-full flex items-center justify-between gap-3 group/hdr"
       >
         <h3 className="text-sm font-bold text-fg uppercase tracking-wider flex items-center gap-2">
-          <svg className="w-4 h-4 text-violet-500 dark:text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
           </svg>
           Advanced Filters
@@ -230,7 +200,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
       {/* Location — the primary filter, spans full width */}
       <div className="mb-5">
         <label className={labelCls}>
-          Location <span className="text-violet-500 dark:text-violet-300 normal-case tracking-normal">· add as many as you like</span>
+          Location <span className="text-muted-foreground normal-case tracking-normal">· add as many as you like</span>
         </label>
         <MultiDropdown
           values={locations} onChange={setLocations} options={locationOptions} searchable
@@ -262,7 +232,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
                 onClick={() => setPreset(on ? "" : p.id)}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all ${
                   on
-                    ? "bg-accent text-white shadow-[0_0_18px_rgba(139,92,246,0.4)]"
+                    ? "bg-primary text-primary-foreground"
                     : "bg-fg/[0.05] text-fg/70 hover:text-fg border border-fg/10"
                 }`}
               >

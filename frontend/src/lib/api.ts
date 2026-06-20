@@ -292,6 +292,48 @@ export async function pollResumeUntilReady(
   throw new Error("Timeout waiting for resume processing");
 }
 
+/**
+ * Stream résumé status via Server-Sent Events (one connection instead of N
+ * polls). The token rides as a query param because EventSource can't set
+ * headers. Any stream error falls back to {@link pollResumeUntilReady}.
+ */
+export function streamResumeUntilReady(
+  token: string,
+  resumeId: string,
+  onProgress?: (status: string) => void
+): Promise<ResumeDetail> {
+  return new Promise((resolve, reject) => {
+    if (typeof EventSource === "undefined") {
+      pollResumeUntilReady(token, resumeId, onProgress).then(resolve, reject);
+      return;
+    }
+    const url = `${API_BASE}/api/resumes/${resumeId}/stream?token=${encodeURIComponent(token)}`;
+    const es = new EventSource(url);
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      es.close();
+      fn();
+    };
+
+    es.onmessage = (e) => {
+      let status: string;
+      try {
+        status = (JSON.parse(e.data) as { status: string }).status;
+      } catch {
+        return;
+      }
+      onProgress?.(status);
+      if (status === "ready") finish(() => getResumeStatus(token, resumeId).then(resolve, reject));
+      else if (status === "failed") finish(() => reject(new Error("Resume processing failed")));
+    };
+
+    // Stream unsupported/blocked or closed early → fall back to polling.
+    es.onerror = () => finish(() => pollResumeUntilReady(token, resumeId, onProgress).then(resolve, reject));
+  });
+}
+
 // ── Matching (authenticated) ─────────────────────────────────────────────────
 
 export async function getEligibleJobs(

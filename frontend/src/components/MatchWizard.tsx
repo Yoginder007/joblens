@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import ResumeUploader from "./ResumeUploader";
 import FilterPanel from "./FilterPanel";
+import { Button } from "@/components/ui/button";
 import type { SearchFilters } from "@/lib/api";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -72,7 +73,7 @@ export default function MatchWizard({
   ];
 
   return (
-    <div className="glass-strong rounded-3xl p-8">
+    <div className="bg-card border border-border shadow-sm rounded-xl p-8">
       {/* ── Progress rail ── */}
       <div className="flex items-center mb-8">
         {STEPS.map((s, i) => {
@@ -82,9 +83,9 @@ export default function MatchWizard({
           return (
             <div key={s.label} className={`flex items-center ${i > 0 ? "flex-1" : ""}`}>
               {i > 0 && (
-                <div className="flex-1 h-px mx-3 bg-fg/10 relative overflow-hidden rounded-full">
+                <div className="flex-1 h-px mx-3 bg-muted relative overflow-hidden rounded-full">
                   <motion.div
-                    className="absolute inset-y-0 left-0 bg-accent"
+                    className="absolute inset-y-0 left-0 bg-primary"
                     initial={false}
                     animate={{ width: done || current ? "100%" : "0%" }}
                     transition={{ duration: 0.45, ease: EASE }}
@@ -97,12 +98,12 @@ export default function MatchWizard({
                 disabled={!reachable}
                 className={`flex items-center gap-2.5 group ${reachable ? "cursor-pointer" : "cursor-not-allowed"}`}
               >
-                <span className={`relative w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                <span className={`relative w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold transition-all duration-300 ${
                   current
-                    ? "bg-accent on-accent shadow-[0_0_20px_rgba(139,92,246,0.5)]"
+                    ? "bg-primary text-primary-foreground shadow-sm"
                     : done
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border border-emerald-500/30"
-                      : "bg-fg/[0.05] text-fg/40 border border-fg/10"
+                      ? "bg-foreground text-background border border-foreground"
+                      : "bg-muted text-muted-foreground border border-border"
                 }`}>
                   {/* Crossfade (no mode="wait") so the badge never shows an
                       empty frame mid-swap; absolute stacking keeps it stable. */}
@@ -122,8 +123,8 @@ export default function MatchWizard({
                   </AnimatePresence>
                 </span>
                 <span className="hidden sm:block text-left">
-                  <span className={`block text-xs font-bold ${current ? "text-fg" : "text-fg/45"}`}>{s.label}</span>
-                  <span className="block text-[10px] text-fg/30">{s.hint}</span>
+                  <span className={`block text-xs font-bold ${current ? "text-foreground" : "text-muted-foreground"}`}>{s.label}</span>
+                  <span className="block text-[10px] text-muted-foreground">{s.hint}</span>
                 </span>
               </button>
             </div>
@@ -134,15 +135,15 @@ export default function MatchWizard({
       {/* ── Step 1: Profile ── */}
       <WizardStep active={step === 0}>
         {authed ? (
-          <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-2xl bg-fg/[0.04] border border-fg/10">
-            <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-[11px] font-bold on-accent shrink-0">
+          <div className="flex items-center gap-3 mb-6 px-4 py-3 rounded-xl bg-muted/50 border border-border">
+            <div className="w-9 h-9 rounded-lg bg-foreground flex items-center justify-center text-[11px] font-bold text-background shrink-0">
               {(acctName || acctEmail || "?").slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-fg truncate">{acctName || "Signed in"}</p>
-              <p className="text-xs text-fg/50 truncate">{acctEmail}</p>
+              <p className="text-sm font-semibold text-foreground truncate">{acctName || "Signed in"}</p>
+              <p className="text-xs text-muted-foreground truncate">{acctEmail}</p>
             </div>
-            <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+            <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-secondary text-secondary-foreground">
               Signed in
             </span>
           </div>
@@ -165,12 +166,15 @@ export default function MatchWizard({
         <ResumeUploader onFileSelected={setFile} disabled={isSubmitting} />
 
         <div className="flex justify-end mt-8">
-          <NextButton disabled={!profileOk} onClick={() => goStep(1)}>
+          <Button disabled={!profileOk} onClick={() => goStep(1)}>
             Set Preferences
-          </NextButton>
+            <svg className="w-3.5 h-3.5 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </Button>
         </div>
         {!profileOk && (
-          <p className="text-right text-[11px] text-fg/35 mt-2">
+          <p className="text-right text-[11px] text-muted-foreground mt-2">
             {file ? "Add your name and email to continue." : "Upload your résumé (PDF) to continue."}
           </p>
         )}
@@ -180,22 +184,32 @@ export default function MatchWizard({
       <WizardStep active={step === 1}>
         {prefsMounted && <FilterPanel onFiltersChange={handleFilters} disabled={isSubmitting} />}
         <div className="flex justify-between mt-8">
-          <BackButton onClick={() => goStep(0)} />
-          <NextButton onClick={() => goStep(2)}>Review &amp; Launch</NextButton>
+          <Button variant="outline" onClick={() => goStep(0)}>
+            <svg className="w-3.5 h-3.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+            </svg>
+            Back
+          </Button>
+          <Button onClick={() => goStep(2)}>
+            Review &amp; Launch
+            <svg className="w-3.5 h-3.5 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </Button>
         </div>
       </WizardStep>
 
       {/* ── Step 3: Review & launch ── */}
       <WizardStep active={step === 2}>
-        <div className="space-y-5 mb-8">
+        <div className="space-y-4 mb-8">
           <SummaryRow label="Candidate">
-            <span className="text-sm text-fg/80 font-medium">
+            <span className="text-sm text-foreground font-medium">
               {authed ? (acctName || acctEmail) : `${fullName} · ${email}`}
             </span>
           </SummaryRow>
           <SummaryRow label="Résumé">
-            <span className="inline-flex items-center gap-2 text-sm text-fg/80 font-medium">
-              <svg className="w-4 h-4 text-violet-500 dark:text-violet-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <span className="inline-flex items-center gap-2 text-sm text-foreground font-medium">
+              <svg className="w-4 h-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
               {file?.name || "—"}
@@ -204,26 +218,28 @@ export default function MatchWizard({
           <SummaryRow label="Search setup">
             <div className="flex flex-wrap gap-1.5">
               {summaryChips.map((c) => (
-                <span key={c} className="px-2.5 py-1 rounded-lg text-xs font-medium bg-violet-500/12 text-violet-700 dark:text-violet-300 border border-violet-500/20 capitalize">
+                <span key={c} className="px-2.5 py-1 rounded-md text-xs font-medium bg-secondary text-secondary-foreground capitalize">
                   {c}
                 </span>
               ))}
               {summaryChips.length <= 1 && (
-                <span className="text-xs text-fg/35 italic self-center">No extra filters — searching everything.</span>
+                <span className="text-xs text-muted-foreground italic self-center">No extra filters — searching everything.</span>
               )}
             </div>
           </SummaryRow>
         </div>
 
         <div className="flex items-center justify-between gap-4">
-          <BackButton onClick={() => goStep(1)} />
-          <motion.button
-            whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          <Button variant="outline" onClick={() => goStep(1)}>
+            <svg className="w-3.5 h-3.5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+            </svg>
+            Back
+          </Button>
+          <Button
             onClick={onSubmit}
             disabled={isSubmitting || !profileOk}
-            className="flex-1 py-3.5 rounded-2xl text-sm font-bold on-accent bg-accent
-                       shadow-[0_10px_40px_-8px_rgba(139,92,246,0.6)] transition-all
-                       disabled:opacity-30 disabled:cursor-not-allowed hover:shadow-[0_14px_50px_-8px_rgba(139,92,246,0.8)]"
+            className="flex-1 font-semibold"
           >
             {isSubmitting ? (
               <span className="flex items-center justify-center gap-2">
@@ -234,7 +250,7 @@ export default function MatchWizard({
                 Processing…
               </span>
             ) : "Find Matching Jobs"}
-          </motion.button>
+          </Button>
         </div>
       </WizardStep>
     </div>
@@ -257,7 +273,7 @@ function WizardStep({ active, children }: { active: boolean; children: React.Rea
 
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="block text-[10px] font-semibold text-fg/45 uppercase tracking-[0.18em] mb-2">
+    <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
       {children}
     </label>
   );
@@ -265,41 +281,9 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-4 px-4 py-3 rounded-2xl bg-fg/[0.03] border border-fg/[0.08]">
-      <span className="text-[10px] font-semibold text-fg/40 uppercase tracking-[0.18em] w-24 shrink-0 mt-1">{label}</span>
+    <div className="flex items-start gap-4 px-4 py-3 rounded-lg bg-muted/30 border border-border">
+      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest w-24 shrink-0 mt-1">{label}</span>
       <div className="flex-1 min-w-0">{children}</div>
     </div>
-  );
-}
-
-function NextButton({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
-  return (
-    <motion.button
-      whileHover={{ scale: disabled ? 1 : 1.03 }} whileTap={{ scale: disabled ? 1 : 0.97 }}
-      type="button" onClick={onClick} disabled={disabled}
-      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-accent on-accent text-xs font-bold
-                 shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-all
-                 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
-    >
-      {children}
-      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-      </svg>
-    </motion.button>
-  );
-}
-
-function BackButton({ onClick }: { onClick: () => void }) {
-  return (
-    <motion.button
-      whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-      type="button" onClick={onClick}
-      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl glass glass-hover text-xs font-semibold text-fg/70"
-    >
-      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
-      </svg>
-      Back
-    </motion.button>
   );
 }

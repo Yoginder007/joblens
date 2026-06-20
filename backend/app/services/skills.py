@@ -123,3 +123,79 @@ def display_name(canonical: str) -> str:
     if canonical in overrides:
         return overrides[canonical]
     return canonical.title()
+
+
+# ── Skill vocabulary + extraction (single source of truth) ───────────────────
+# One canonical, display-cased vocabulary used by BOTH the ATS scrapers (to pull
+# skills out of job descriptions) and the regex résumé parser. Previously each
+# kept its own divergent ``_KNOWN_SKILLS`` list.
+KNOWN_SKILLS: list[str] = [
+    # Languages
+    "Python", "Java", "JavaScript", "TypeScript", "Go", "Golang", "Rust",
+    "C++", "C#", "Ruby", "Kotlin", "Swift", "Scala", "PHP", "Perl", "Dart", "SQL",
+    # Frameworks (Spring Boot before Spring so the more specific name is preferred)
+    "React", "Angular", "Vue", "Next.js", "Node.js", "Express", "Django",
+    "FastAPI", "Flask", "Spring Boot", "Spring", "Rails", "Laravel",
+    # Infra / cloud
+    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Jenkins",
+    "Git", "Linux", "CI/CD", "Microservices", "Distributed Systems",
+    # Data stores / streaming
+    "PostgreSQL", "MySQL", "MongoDB", "DynamoDB", "Redis", "Kafka", "Spark",
+    "Elasticsearch", "GraphQL", "REST", "gRPC",
+    # ML / data
+    "Machine Learning", "Deep Learning", "NLP", "Computer Vision", "PyTorch",
+    "TensorFlow", "Pandas", "NumPy", "Scikit-learn", "Data Structures", "Algorithms",
+    # Web / misc
+    "HTML", "CSS", "Tailwind", "Bootstrap", "Figma", "Agile", "Scrum",
+]
+
+# Category buckets for the parser's grouped output (display-cased to match
+# KNOWN_SKILLS). "Golang" collapses to "Go" during extraction, so only "Go" here.
+_LANGUAGES = {
+    "Python", "Java", "JavaScript", "TypeScript", "Go", "Rust", "C++", "C#",
+    "Ruby", "Kotlin", "Swift", "Scala", "PHP", "Perl", "Dart", "SQL",
+}
+_FRAMEWORKS = {
+    "React", "Angular", "Vue", "Next.js", "Node.js", "Express", "Django",
+    "FastAPI", "Flask", "Spring", "Spring Boot", "Rails", "Laravel",
+}
+_INFRA = {
+    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Jenkins",
+    "Git", "Linux", "CI/CD", "Kafka", "Redis",
+}
+
+
+def extract_skills(text: str, limit: int = 10) -> list[str]:
+    """Pull known technical skills out of free text (word-boundary safe, so "Go"
+    never matches inside "Google" and "R" never matches inside a word). Returns
+    canonical display names; "Golang" collapses to "Go"."""
+    if not text:
+        return []
+    found: list[str] = []
+    for skill in KNOWN_SKILLS:
+        if re.search(r"(?<![A-Za-z0-9+#.])" + re.escape(skill) + r"(?![A-Za-z0-9+#])", text, re.I):
+            canonical = "Go" if skill == "Golang" else skill
+            if canonical not in found:
+                found.append(canonical)
+    return found[:limit]
+
+
+def categorize_skills(found: list[str]) -> list[dict]:
+    """Group extracted skills into the parser's category shape. Empty input
+    yields a single "General" bucket so the schema is always populated."""
+    if not found:
+        return [{"category": "General", "skills": ["Software Development"], "proficiency": "Unknown"}]
+    languages = [s for s in found if s in _LANGUAGES]
+    frameworks = [s for s in found if s in _FRAMEWORKS]
+    infra = [s for s in found if s in _INFRA]
+    other = [s for s in found if s not in _LANGUAGES | _FRAMEWORKS | _INFRA]
+    out: list[dict] = []
+    if languages:
+        out.append({"category": "Languages", "skills": languages, "proficiency": "Advanced"})
+    if frameworks:
+        out.append({"category": "Frameworks", "skills": frameworks, "proficiency": "Advanced"})
+    if infra:
+        out.append({"category": "Infrastructure", "skills": infra, "proficiency": "Intermediate"})
+    if other:
+        out.append({"category": "Other", "skills": other, "proficiency": "Intermediate"})
+    return out

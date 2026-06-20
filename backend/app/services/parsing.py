@@ -15,34 +15,9 @@ import logging
 import re
 from pathlib import Path
 
+from app.services.skills import categorize_skills, extract_skills
+
 logger = logging.getLogger(__name__)
-
-_KNOWN_SKILLS = [
-    "Python", "Java", "JavaScript", "TypeScript", "Go", "Rust", "C++", "C#",
-    "Ruby", "Kotlin", "Swift", "Scala", "R", "PHP", "Perl", "Dart", "SQL",
-    "React", "Angular", "Vue", "Next.js", "Node.js", "Express", "Django",
-    "FastAPI", "Flask", "Spring", "Spring Boot", "Rails", "Laravel",
-    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Jenkins",
-    "Git", "Linux", "PostgreSQL", "MySQL", "MongoDB", "Redis", "Kafka",
-    "Elasticsearch", "GraphQL", "REST", "gRPC", "CI/CD",
-    "Machine Learning", "Deep Learning", "NLP", "Computer Vision",
-    "PyTorch", "TensorFlow", "Pandas", "NumPy", "Scikit-learn",
-    "HTML", "CSS", "Tailwind", "Bootstrap", "Figma",
-    "Microservices", "Distributed Systems", "Agile", "Scrum",
-]
-
-_LANGUAGES = {
-    "Python", "Java", "JavaScript", "TypeScript", "Go", "Rust", "C++", "C#",
-    "Ruby", "Kotlin", "Swift", "Scala", "R", "PHP", "SQL", "Dart",
-}
-_FRAMEWORKS = {
-    "React", "Angular", "Vue", "Next.js", "Node.js", "Express", "Django",
-    "FastAPI", "Flask", "Spring", "Spring Boot", "Rails", "Laravel",
-}
-_INFRA = {
-    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Jenkins",
-    "Git", "Linux", "CI/CD", "Kafka", "Redis",
-}
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -88,33 +63,8 @@ def _extract_experience_years(text: str) -> int:
 
 
 def _extract_skills(text: str) -> list[dict]:
-    text_lower = text.lower()
-    found: list[str] = []
-    for skill in _KNOWN_SKILLS:
-        if skill.lower() in ("go", "r", "c"):
-            if re.search(r"\b" + re.escape(skill) + r"\b", text):
-                found.append(skill)
-        elif skill.lower() in text_lower:
-            found.append(skill)
-
-    if not found:
-        return [{"category": "General", "skills": ["Software Development"], "proficiency": "Unknown"}]
-
-    languages = [s for s in found if s in _LANGUAGES]
-    frameworks = [s for s in found if s in _FRAMEWORKS]
-    infra = [s for s in found if s in _INFRA]
-    other = [s for s in found if s not in _LANGUAGES | _FRAMEWORKS | _INFRA]
-
-    out: list[dict] = []
-    if languages:
-        out.append({"category": "Languages", "skills": languages, "proficiency": "Advanced"})
-    if frameworks:
-        out.append({"category": "Frameworks", "skills": frameworks, "proficiency": "Advanced"})
-    if infra:
-        out.append({"category": "Infrastructure", "skills": infra, "proficiency": "Intermediate"})
-    if other:
-        out.append({"category": "Other", "skills": other, "proficiency": "Intermediate"})
-    return out
+    """Skills grouped into the parser's category shape, via the shared vocabulary."""
+    return categorize_skills(extract_skills(text, limit=40))
 
 
 def _extract_name(text: str) -> str:

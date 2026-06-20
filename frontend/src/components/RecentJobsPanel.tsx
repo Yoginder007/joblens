@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { searchJobs, type FacetCounts, type RecentJob, type SearchV2Filters } from "@/lib/api";
 import AdvancedSearchPanel from "./AdvancedSearchPanel";
 import JobDetailDrawer from "./JobDetailDrawer";
 import JobDetailBody from "./JobDetailBody";
-import { staggerItem } from "@/lib/motion";
-import { companyGradient, companyInitials, daysAgo } from "@/lib/ui";
+import { daysAgo } from "@/lib/ui";
+import CompanyAvatar from "./CompanyAvatar";
+import { Button } from "@/components/ui/button";
 import { useMediaQuery } from "@/lib/useMediaQuery";
 
 const PAGE_SIZE = 10;
@@ -171,7 +172,7 @@ export default function RecentJobsPanel() {
       </div>
 
       {error && (
-        <div className="mb-8 px-4 py-3 rounded-2xl bg-rose-500/10 border border-rose-400/25 text-sm text-rose-300">{error}</div>
+        <div className="mb-8 px-4 py-3 rounded-2xl bg-destructive/10 border border-destructive/25 text-sm text-destructive">{error}</div>
       )}
 
       {loading && pageJobs.length === 0 && (
@@ -198,10 +199,10 @@ export default function RecentJobsPanel() {
         <div>
           {/* Result header + page controls */}
           <div ref={listTopRef} className="flex items-center justify-between mb-4 scroll-mt-24">
-            <p className="text-sm text-fg/60">
-              Showing <span className="text-fg font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, total)}</span> of{" "}
-              <span className="text-gradient font-bold">{total}</span> jobs
-              {isDesktop && <span className="text-fg/30 text-xs ml-3 hidden xl:inline">↑↓ to browse</span>}
+            <p className="text-sm text-muted-foreground">
+              Showing <span className="text-foreground font-semibold">{safePage * PAGE_SIZE + 1}–{Math.min((safePage + 1) * PAGE_SIZE, total)}</span> of{" "}
+              <span className="text-foreground font-bold">{total}</span> jobs
+              {isDesktop && <span className="text-muted-foreground text-xs ml-3 hidden xl:inline">↑↓ to browse</span>}
             </p>
             <PageControls page={safePage} pageCount={pageCount} onPrev={() => go(-1)} onNext={() => go(1)} loading={loading} />
           </div>
@@ -245,7 +246,7 @@ export default function RecentJobsPanel() {
 
             {/* Sticky detail pane (desktop only). popLayout crossfades the
                 outgoing job with the incoming one — no empty-pane flash. */}
-            <div ref={paneRef} className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-3xl glass-strong">
+            <div ref={paneRef} className="hidden xl:block sticky top-24 max-h-[calc(100vh-7.5rem)] overflow-y-auto rounded-xl border border-border bg-card shadow-sm">
               <AnimatePresence mode="popLayout" initial={false}>
                 {selected ? (
                   <motion.div
@@ -287,35 +288,33 @@ function PageControls({
   // request-id guard makes rapid paging safe). Only the bounds disable.
   return (
     <div className="flex items-center gap-2">
-      <motion.button
-        whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}
+      <Button
+        variant="outline" size="icon"
         onClick={onPrev} disabled={page === 0}
-        className="w-9 h-9 rounded-xl glass glass-hover flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
         aria-label="Previous page"
       >
-        <svg className="w-4 h-4 text-fg/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" />
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
-      </motion.button>
-      <span className="relative text-xs text-fg/50 tabular-nums min-w-[54px] text-center">
+      </Button>
+      <span className="relative text-xs text-muted-foreground font-mono min-w-[54px] text-center">
         {page + 1} / {pageCount}
         {loading && (
-          <svg className="animate-spin w-3 h-3 text-violet-400 absolute -right-4 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none">
+          <svg className="animate-spin w-3 h-3 text-foreground absolute -right-4 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
           </svg>
         )}
       </span>
-      <motion.button
-        whileTap={{ scale: 0.9 }} whileHover={{ scale: 1.05 }}
+      <Button
+        variant="outline" size="icon"
         onClick={onNext} disabled={page >= pageCount - 1}
-        className="w-9 h-9 rounded-xl glass glass-hover flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed"
         aria-label="Next page"
       >
-        <svg className="w-4 h-4 text-fg/70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-      </motion.button>
+      </Button>
     </div>
   );
 }
@@ -323,67 +322,42 @@ function PageControls({
 function JobBrowseCard({
   job, onOpen, active = false, compact = false,
 }: { job: RecentJob; onOpen: (job: RecentJob) => void; active?: boolean; compact?: boolean }) {
-  // Subtle pointer-tracked 3D tilt (springs back on leave).
-  const rx = useMotionValue(0);
-  const ry = useMotionValue(0);
-  const srx = useSpring(rx, { stiffness: 220, damping: 18 });
-  const sry = useSpring(ry, { stiffness: 220, damping: 18 });
-
-  const onMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    ry.set(((e.clientX - r.left) / r.width - 0.5) * 5);
-    rx.set(-((e.clientY - r.top) / r.height - 0.5) * 5);
-  };
-  const onLeave = () => { rx.set(0); ry.set(0); };
-
   const fresh = daysAgo(job.posted_date || job.scraped_at);
 
   return (
-    <motion.div
-      variants={staggerItem}
-      initial="hidden" animate="show"
-      whileHover={{ y: -4 }}
-      onMouseMove={onMove}
-      onMouseLeave={onLeave}
-      style={{ rotateX: srx, rotateY: sry, transformPerspective: 900 }}
+    <div
       onClick={() => onOpen(job)}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === "Enter") onOpen(job); }}
-      className={`group rounded-2xl glass glass-hover p-5 flex flex-col cursor-pointer
-                  transition-shadow duration-300 hover:shadow-[0_18px_50px_-20px_rgba(139,92,246,0.45)]
-                  ${active ? "ring-1 ring-violet-400/60 !border-violet-400/40 !bg-fg/[0.05]" : ""}`}
+      className={`group p-5 flex flex-col cursor-pointer border-b last:border-0 border-border hover:bg-muted/50 transition-colors
+                  ${active ? "bg-muted border-l-4 border-l-primary !pl-4" : ""}`}
     >
       <div className="flex items-start gap-3 mb-2">
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-[11px] font-bold text-white shrink-0 mt-0.5"
-          style={{ backgroundImage: companyGradient(job.company) }}
-        >
-          {companyInitials(job.company)}
-        </div>
+        <CompanyAvatar name={job.company} className="w-9 h-9 rounded-md" textClassName="text-xs" />
         <div className="flex-1 min-w-0">
           <div className="flex justify-between items-start gap-2">
-            <h4 className="text-sm font-semibold text-fg group-hover:text-violet-500 dark:group-hover:text-violet-200 transition-colors line-clamp-2">{job.title}</h4>
+            <h4 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2">{job.title}</h4>
             <div className="flex items-center gap-1.5 shrink-0">
-              {fresh && <span className="text-[9px] text-fg/35 whitespace-nowrap">{fresh}</span>}
+              {fresh && <span className="text-[10px] text-muted-foreground whitespace-nowrap">{fresh}</span>}
               {job.work_model && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-fg/8 text-fg/50">{job.work_model}</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-secondary text-secondary-foreground">{job.work_model}</span>
               )}
             </div>
           </div>
-          <p className="text-xs text-fg/50 mt-0.5">
-            <span className="font-medium text-fg/70">{job.company}</span>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            <span className="font-medium text-foreground">{job.company}</span>
             {job.source && job.source !== job.company ? ` · via ${job.source}` : ""}
             {job.industry ? ` · ${job.industry}` : ""}
           </p>
         </div>
       </div>
 
-      {!compact && <p className="text-xs text-fg/45 line-clamp-2 mb-3">{job.description}</p>}
+      {!compact && <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{job.description}</p>}
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {job.location && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-fg/[0.06] text-xs text-fg/55">
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-muted text-xs text-muted-foreground font-medium">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -391,7 +365,7 @@ function JobBrowseCard({
             {job.location}
           </span>
         )}
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-fg/[0.06] text-xs text-fg/55">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-muted text-xs text-muted-foreground font-medium">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -402,19 +376,19 @@ function JobBrowseCard({
       {job.technical_skills && job.technical_skills.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-4">
           {job.technical_skills.slice(0, compact ? 4 : 5).map((skill) => (
-            <span key={skill} className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-violet-500/12 text-violet-700 dark:text-violet-300 border border-violet-500/20">{skill}</span>
+            <span key={skill} className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-secondary text-secondary-foreground">{skill}</span>
           ))}
           {job.technical_skills.length > (compact ? 4 : 5) && (
-            <span className="px-2 py-0.5 rounded-md text-[10px] text-fg/30">+{job.technical_skills.length - (compact ? 4 : 5)}</span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] text-muted-foreground">+{job.technical_skills.length - (compact ? 4 : 5)}</span>
           )}
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2 mt-auto border-t border-fg/[0.06]">
-        <p className="text-[10px] text-fg/30 font-mono truncate max-w-[160px]">{job.source_id}</p>
+      <div className="flex items-center justify-between pt-2 mt-auto">
+        <p className="text-[10px] text-muted-foreground font-mono truncate max-w-[160px]">{job.source_id}</p>
         {job.job_url ? (
           <a href={job.job_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-accent text-white text-xs font-semibold hover:shadow-[0_0_16px_rgba(139,92,246,0.5)] transition-all">
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-all">
             View
             <svg className="w-3 h-3 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
               fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -422,9 +396,9 @@ function JobBrowseCard({
             </svg>
           </a>
         ) : (
-          <span className="text-[10px] text-fg/30">No link</span>
+          <span className="text-[10px] text-muted-foreground">No link</span>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

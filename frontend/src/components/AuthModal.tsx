@@ -95,13 +95,11 @@ export default function AuthModal({ open, initialMode = "login", onClose, onAuth
               transition={{ type: "spring", stiffness: 320, damping: 28 }}
               className="pointer-events-auto w-full max-w-md glass-popover rounded-3xl p-7 relative overflow-hidden"
             >
-              <div className="absolute -top-20 -right-20 w-52 h-52 rounded-full bg-violet-600/20 blur-3xl pointer-events-none" />
-
               {/* Header */}
               <div className="relative flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center shadow-[0_0_18px_rgba(139,92,246,0.5)]">
-                    <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+                    <svg className="w-5 h-5 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <circle cx="11" cy="11" r="7" strokeWidth={2} strokeDasharray="3 3" />
                       <circle cx="11" cy="11" r="3" strokeWidth={2} />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 16.5L21 21" />
@@ -167,16 +165,15 @@ export default function AuthModal({ open, initialMode = "login", onClose, onAuth
                   {error && (
                     <motion.p
                       initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                      className="text-xs text-rose-500 dark:text-rose-300">{error}</motion.p>
+                      className="text-xs text-destructive">{error}</motion.p>
                   )}
                 </AnimatePresence>
 
                 <motion.button
                   whileHover={{ scale: busy ? 1 : 1.01 }} whileTap={{ scale: busy ? 1 : 0.99 }}
                   onClick={submit} disabled={busy}
-                  className="w-full py-3 rounded-2xl text-sm font-bold on-accent bg-accent mt-1
-                             shadow-[0_10px_40px_-8px_rgba(139,92,246,0.6)] transition-all
-                             disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-[0_14px_50px_-8px_rgba(139,92,246,0.8)]">
+                  className="w-full py-3 rounded-2xl text-sm font-bold bg-primary text-primary-foreground mt-1 transition-all
+                             disabled:opacity-50 disabled:cursor-not-allowed hover:bg-primary/90">
                   {busy
                     ? <span className="inline-flex items-center gap-2"><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>{mode === "signup" ? "Creating account…" : "Logging in…"}</span>
                     : (mode === "signup" ? "Create account" : "Log in")}
@@ -186,7 +183,7 @@ export default function AuthModal({ open, initialMode = "login", onClose, onAuth
               <p className="text-[11px] text-fg/40 text-center mt-4">
                 {mode === "login" ? "New here? " : "Already have an account? "}
                 <button onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(null); }}
-                  className="text-violet-500 dark:text-violet-300 font-semibold hover:underline">
+                  className="text-foreground font-semibold hover:underline">
                   {mode === "login" ? "Create an account" : "Log in"}
                 </button>
               </p>

@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { cn } from "@/lib/utils";
 
-const font = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  variable: "--font-sans",
-});
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "JobLens — See the jobs that match you",
@@ -20,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${font.variable} font-sans antialiased transition-colors duration-300`}>
+    <html lang="en" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
+      <body className={`${geist.variable} font-sans antialiased transition-colors duration-300`}>
         <ThemeProvider>
           {children}
         </ThemeProvider>

@@ -44,7 +44,7 @@ export default function UserMenu({ authed, email, fullName, onLogin, onSignup, o
           Log in
         </button>
         <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} onClick={onSignup}
-          className="px-4 py-2 rounded-xl text-xs font-bold on-accent bg-accent shadow-[0_0_18px_rgba(139,92,246,0.4)]">
+          className="px-4 py-2 rounded-xl text-xs font-bold on-accent bg-accent">
           Sign up
         </motion.button>
       </div>
@@ -55,7 +55,7 @@ export default function UserMenu({ authed, email, fullName, onLogin, onSignup, o
     <div ref={ref} className="relative">
       <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
         onClick={() => setOpen((o) => !o)} aria-label="Account menu"
-        className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-[11px] font-bold on-accent shadow-[0_0_18px_rgba(139,92,246,0.45)]">
+        className="w-9 h-9 rounded-xl bg-accent flex items-center justify-center text-[11px] font-bold on-accent">
         {initials(fullName, email)}
       </motion.button>
       <AnimatePresence>
@@ -72,7 +72,7 @@ export default function UserMenu({ authed, email, fullName, onLogin, onSignup, o
               <p className="text-[11px] text-fg/50 truncate">{email}</p>
             </div>
             <button onClick={() => { setOpen(false); onSignOut(); }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-fg/70 hover:bg-fg/[0.06] hover:text-rose-500 dark:hover:text-rose-300 transition-colors">
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-fg/70 hover:bg-fg/[0.06] hover:text-destructive transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>

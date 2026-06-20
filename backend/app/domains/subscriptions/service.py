@@ -7,12 +7,14 @@ pushes only the *new* matches over the configured channel.
 """
 from __future__ import annotations
 
+import html
 import logging
 
 import httpx
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.services.email import send_email
 from app.domains.candidates.models import Candidate
 from app.domains.jobs.repository import JobFilters
 from app.domains.matching.service import MatchingService
@@ -31,6 +33,28 @@ def _filters_from(stored: dict) -> JobFilters:
         location=stored.get("location"),
         work_model=stored.get("work_model"),
         sources=stored.get("sources") or [],
+    )
+
+
+def _email_html(matches: list[tuple]) -> str:
+    """Minimal, client-safe HTML digest of new matches (inline styles)."""
+    rows = "".join(
+        '<tr><td style="padding:12px 0;border-bottom:1px solid #eee;">'
+        f'<a href="{html.escape(job.job_url or "#", quote=True)}" '
+        'style="font-weight:600;color:#111;text-decoration:none;font-size:15px;">'
+        f'{html.escape(job.title or "Role")}</a>'
+        '<div style="color:#666;font-size:13px;margin-top:2px;">'
+        f'{html.escape(job.company or "")} · {round(float(res.match_score))}% match</div>'
+        "</td></tr>"
+        for job, res in matches
+    )
+    return (
+        '<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;color:#111;">'
+        '<h2 style="font-size:18px;">New roles that match your résumé</h2>'
+        f'<table style="width:100%;border-collapse:collapse;">{rows}</table>'
+        '<p style="color:#999;font-size:12px;margin-top:24px;">'
+        "You're receiving this because you set up a JobLens alert.</p>"
+        "</div>"
     )
 
 
@@ -114,28 +138,36 @@ class SubscriptionService:
         return len(new_matches)
 
     def _deliver(self, sub: Subscription, matches: list[tuple]) -> tuple[str, str | None]:
-        payload = {
-            "subscription_id": str(sub.id),
-            "matches": [
-                {
-                    "job_id": str(job.id),
-                    "title": job.title,
-                    "company": job.company,
-                    "job_url": job.job_url,
-                    "match_score": round(float(res.match_score), 1),
-                }
-                for job, res in matches
-            ],
-        }
         try:
-            if sub.channel == "webhook" and sub.destination:
+            if sub.channel == "webhook":
+                if not sub.destination:
+                    return "skipped", "no webhook destination"
+                payload = {
+                    "subscription_id": str(sub.id),
+                    "matches": [
+                        {
+                            "job_id": str(job.id),
+                            "title": job.title,
+                            "company": job.company,
+                            "job_url": job.job_url,
+                            "match_score": round(float(res.match_score), 1),
+                        }
+                        for job, res in matches
+                    ],
+                }
                 httpx.post(sub.destination, json=payload, timeout=10.0)
-            else:
-                # Email channel: integration point for an SMTP/provider client.
-                logger.info(
-                    "ALERT email → %s: %d new matches", sub.destination, len(matches)
-                )
-            return "sent", None
+                return "sent", None
+
+            # Email channel — sends real mail when SMTP is configured, else logs.
+            if not sub.destination:
+                return "skipped", "no email destination"
+            n = len(matches)
+            sent = send_email(
+                sub.destination,
+                subject=f"{n} new job match{'es' if n != 1 else ''} on JobLens",
+                html_body=_email_html(matches),
+            )
+            return ("sent", None) if sent else ("logged", None)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Alert delivery failed for %s: %s", sub.id, exc)
             return "failed", str(exc)

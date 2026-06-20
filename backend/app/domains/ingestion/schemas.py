@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.domains.jobs.schemas import JobCreate
@@ -25,6 +27,11 @@ class PortalInfo(BaseModel):
 class IngestRequest(BaseModel):
     """Trigger ingestion for selected companies (or all when empty)."""
     companies: list[str] = Field(default_factory=list)
+    # Cost tier used when ``companies`` is empty: "free" (ATS / Adzuna / curated),
+    # "paid" (Apify — weekly-throttled), or "all".
+    tier: Literal["free", "paid", "all"] = "all"
+    # Override the weekly paid-scrape guard. Use sparingly — paid runs cost money.
+    force: bool = False
     # True → run as a background task (free-tier proxies time out long syncs);
     # poll GET /api/ingest/status for progress.
     background: bool = False

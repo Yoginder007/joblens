@@ -8,10 +8,10 @@ simple check-then-write is used — there is no concurrent writer to race with.
 import logging
 import time
 
-from sqlalchemy import literal_column, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.upsert import upsert
 from app.domains.jobs.models import Job
 from app.domains.jobs.schemas import JobCreate
 
@@ -34,7 +34,6 @@ class IngestionService:
 
     def ingest(self, source: str, jobs: list[JobCreate]) -> tuple[int, int]:
         """Upsert jobs. Returns (inserted, updated). New jobs get embeddings queued."""
-        is_pg = self.db.bind.dialect.name == "postgresql"
         inserted = updated = 0
         new_ids: list[str] = []
 
@@ -50,31 +49,12 @@ class IngestionService:
                 job_type=j.job_type or "full-time", is_remote=j.is_remote,
                 is_active=True,
             )
-            if is_pg:
-                stmt = (
-                    pg_insert(Job).values(**values)
-                    .on_conflict_do_update(
-                        constraint="uq_job_source_id",
-                        set_={k: values[k] for k in _UPDATE_KEYS},
-                    )
-                    .returning(Job.id, literal_column("(xmax = 0)").label("inserted"))
-                )
-                row = self.db.execute(stmt).one()
-                was_inserted, job_id = bool(row.inserted), row.id
-            else:
-                existing = self.db.scalar(
-                    select(Job).where(Job.source == source, Job.source_id == j.source_id)
-                )
-                if existing:
-                    for k in _UPDATE_KEYS:
-                        setattr(existing, k, values[k])
-                    was_inserted, job_id = False, existing.id
-                else:
-                    job = Job(**values)
-                    self.db.add(job)
-                    self.db.flush()
-                    was_inserted, job_id = True, job.id
-
+            job_id, was_inserted = upsert(
+                self.db, Job, values,
+                conflict_constraint="uq_job_source_id",
+                update_cols=_UPDATE_KEYS,
+                match_by=("source", "source_id"),
+            )
             if was_inserted:
                 inserted += 1
                 new_ids.append(str(job_id))
@@ -104,18 +84,48 @@ class IngestionService:
 INGEST_STATUS: dict = {"state": "idle"}
 
 
-def ingest_all(companies: list[str] | None = None) -> dict:
-    """Fetch + upsert jobs for the given companies (all configured if None).
-    Opens its own session; mirrors progress into INGEST_STATUS."""
-    from app.core.database import SessionLocal
-    from app.domains.ingestion.scrapers import CAREER_PAGES, run_scraper_for_company
+def ingest_all(companies: list[str] | None = None, tier: str = "all", force: bool = False) -> dict:
+    """Fetch + upsert jobs. With ``companies=None`` runs the portals of the given
+    cost ``tier`` ('free' | 'paid' | 'all'). Paid (Apify) sources are throttled
+    to a weekly cadence — if the most recent paid run is < 7 days old they're
+    skipped unless ``force`` is set. Opens its own session; mirrors progress into
+    INGEST_STATUS."""
+    from datetime import datetime, timedelta, timezone
 
-    todo = companies or list(CAREER_PAGES.keys())
+    from sqlalchemy import func
+
+    from app.core.database import SessionLocal
+    from app.domains.ingestion.models import ScrapeRun
+    from app.domains.ingestion.scrapers import (
+        CAREER_PAGES,
+        _PAID_ATS,
+        companies_by_tier,
+        run_scraper_for_company,
+    )
+
+    todo = list(companies) if companies is not None else companies_by_tier(tier)
     status = INGEST_STATUS
-    status.update(state="running", done=0, total=len(todo), error=None)
+    status.update(state="running", done=0, total=len(todo), error=None, skipped_paid=[])
 
     db = SessionLocal()
     try:
+        # Cost guard: don't re-run paid (Apify) sources more than once a week.
+        paid = [c for c in todo if CAREER_PAGES.get(c, {}).get("ats") in _PAID_ATS]
+        if paid and not force:
+            last = db.scalar(select(func.max(ScrapeRun.run_at)).where(ScrapeRun.tier == "paid"))
+            if last is not None:
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                if datetime.now(timezone.utc) - last < timedelta(days=7):
+                    logger.info(
+                        "Skipping paid sources %s (last paid run %s, < 7d). Pass force=true to override.",
+                        paid, last.isoformat(),
+                    )
+                    status["skipped_paid"] = paid
+                    todo = [c for c in todo if c not in paid]
+                    paid = []
+        status["total"] = len(todo)
+
         svc = IngestionService(db)
         results: list[dict] = []
         for company in todo:
@@ -132,11 +142,28 @@ def ingest_all(companies: list[str] | None = None) -> dict:
                                 "error": str(exc)[:200]})
             status["done"] = len(results)
             status["results"] = results
+
+        # Record a ledger row only for a productive paid run, so the weekly guard
+        # throttles real runs but a failed/empty paid attempt can be retried.
+        if paid:
+            ran = [r for r in results if r["company"] in paid]
+            returned = sum(r["inserted"] + r["updated"] for r in ran)
+            if returned > 0:
+                db.add(ScrapeRun(
+                    tier="paid",
+                    companies=[r["company"] for r in ran],
+                    inserted=sum(r["inserted"] for r in ran),
+                    updated=sum(r["updated"] for r in ran),
+                    returned=returned,
+                ))
+                db.commit()
+
         status["state"] = "done"
         return {
             "results": results,
             "total_inserted": sum(r["inserted"] for r in results),
             "total_updated": sum(r["updated"] for r in results),
+            "skipped_paid": status.get("skipped_paid", []),
         }
     except Exception as exc:  # noqa: BLE001
         status.update(state="failed", error=str(exc)[:300])

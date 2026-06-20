@@ -86,6 +86,40 @@ class Settings(BaseSettings):
     def adzuna_enabled(self) -> bool:
         return bool(self.ADZUNA_APP_ID and self.ADZUNA_APP_KEY)
 
+    # Apify marketplace scrapers — real LinkedIn + Indeed postings (pay-per-use).
+    # One run-token enables every Apify portal; leave blank to disable them all.
+    # Actor input schemas differ between actors, so each portal accepts an
+    # optional JSON input override for whichever actor you pick.
+    # Token: https://console.apify.com/account/integrations
+    APIFY_TOKEN: str = ""
+    # Pay-per-result actors (NOT flat-fee "rental" actors). Defaults match the
+    # cheap PPE actors; each needs its own input (see APIFY_*_INPUT below).
+    APIFY_LINKEDIN_ACTOR: str = "curious_coder~linkedin-jobs-scraper"
+    APIFY_INDEED_ACTOR: str = "misceres~indeed-scraper"
+    APIFY_LINKEDIN_INPUT: str = ""  # JSON override of the actor run input (required for these actors)
+    APIFY_INDEED_INPUT: str = ""
+    APIFY_SEARCH_QUERY: str = "software engineer"
+    APIFY_SEARCH_LOCATION: str = "India"
+    APIFY_MAX_ITEMS: int = 50  # hard cap on results billed per run (cost ceiling)
+
+    @property
+    def apify_enabled(self) -> bool:
+        return bool(self.APIFY_TOKEN)
+
+    # ── Email (transactional alert delivery) ─────────────────────────────
+    # When SMTP_HOST + a from/user are set, the email alert channel sends real
+    # mail; otherwise it logs only (graceful fallback on free tiers).
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = ""
+    SMTP_USE_TLS: bool = True
+
+    @property
+    def email_enabled(self) -> bool:
+        return bool(self.SMTP_HOST and (self.SMTP_FROM or self.SMTP_USER))
+
     # ── Security ─────────────────────────────────────────────────────────
     SCRAPER_API_KEY: str = "change-me-in-production"
 

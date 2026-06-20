@@ -13,18 +13,33 @@ Reality of public APIs (probed 2026-05): only Greenhouse (Postman) and Lever
 public API, so those use the ``curated`` provider — a small set of real, verified
 postings — instead of fabricated links.
 
+Providers are registered in ``_FETCHERS`` and selected per portal via its
+``ats`` key. Two kinds: per-company ATS boards (greenhouse/lever/amazon), which
+must yield a specific-posting URL, and *aggregators* in ``_AGGREGATOR_ATS``
+(``adzuna``, ``apify_linkedin``, ``apify_indeed``) that search by keyword +
+location across many companies and return trusted redirect URLs. The Apify
+portals (real LinkedIn / Indeed postings) activate when ``APIFY_TOKEN`` is set;
+Adzuna when its keys are set. Multiple sources run side by side so coverage
+compounds.
+
 Pure helpers (``extract_board_token``, ``extract_job_id_from_url``,
-``extract_skills``) do parsing and are unit-tested without network access.
+``extract_skills``, ``_apify_map``) do parsing and are unit-tested without
+network access.
 """
+import hashlib
 import html
+import json
 import logging
 import re
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
 from app.core.config import get_settings
+from app.services.skills import extract_skills  # re-exported: canonical skill extraction
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +54,9 @@ CAREER_PAGES: dict[str, dict[str, str]] = {
     "CRED":           {"ats": "lever",      "url": "https://jobs.lever.co/cred",            "careers_url": "https://careers.cred.club/"},
     "Amazon":         {"ats": "amazon",     "url": "https://www.amazon.jobs",               "careers_url": "https://www.amazon.jobs/en/"},
     "Adzuna":         {"ats": "adzuna",     "url": "",                                       "careers_url": "https://www.adzuna.in/"},
+    # Apify marketplace aggregators — real LinkedIn / Indeed postings (need APIFY_TOKEN):
+    "LinkedIn":       {"ats": "apify_linkedin", "url": "", "careers_url": "https://www.linkedin.com/jobs/"},
+    "Indeed":         {"ats": "apify_indeed",   "url": "", "careers_url": "https://www.indeed.com/"},
     # Big tech with live Greenhouse boards:
     "Stripe":         {"ats": "greenhouse", "url": "https://boards.greenhouse.io/stripe",    "careers_url": "https://stripe.com/jobs"},
     "Databricks":     {"ats": "greenhouse", "url": "https://boards.greenhouse.io/databricks", "careers_url": "https://www.databricks.com/company/careers"},
@@ -60,19 +78,6 @@ CAREER_PAGES: dict[str, dict[str, str]] = {
     "Atlassian":      {"ats": "curated", "url": "", "careers_url": "https://www.atlassian.com/company/careers/all-jobs"},
 }
 
-# Skills dictionary used to derive technical_skills from real job descriptions.
-_KNOWN_SKILLS = [
-    "Python", "Java", "JavaScript", "TypeScript", "Go", "Golang", "Rust", "C++", "C#",
-    "Ruby", "Kotlin", "Swift", "Scala", "PHP", "SQL", "React", "Angular", "Vue",
-    "Next.js", "Node.js", "Express", "Django", "FastAPI", "Flask", "Spring", "Rails",
-    "AWS", "GCP", "Azure", "Docker", "Kubernetes", "Terraform", "Jenkins", "Git",
-    "Linux", "PostgreSQL", "MySQL", "MongoDB", "DynamoDB", "Redis", "Kafka", "Spark",
-    "Elasticsearch", "GraphQL", "REST", "gRPC", "CI/CD", "Microservices",
-    "Machine Learning", "Deep Learning", "NLP", "PyTorch", "TensorFlow",
-    "Distributed Systems", "Data Structures", "Algorithms",
-]
-
-
 # ── Pure helpers (no network) ───────────────────────────────────────────────
 
 def strip_html(text: str) -> str:
@@ -81,19 +86,6 @@ def strip_html(text: str) -> str:
     text = re.sub(r"</p>", "\n", text)
     text = re.sub(r"<[^>]+>", "", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
-
-
-def extract_skills(text: str, limit: int = 10) -> list[str]:
-    """Pull known technical skills out of a job description (word-boundary safe)."""
-    if not text:
-        return []
-    found: list[str] = []
-    for skill in _KNOWN_SKILLS:
-        if re.search(r"(?<![A-Za-z0-9+#.])" + re.escape(skill) + r"(?![A-Za-z0-9+#])", text, re.I):
-            canonical = "Go" if skill == "Golang" else skill
-            if canonical not in found:
-                found.append(canonical)
-    return found[:limit]
 
 
 def extract_experience_years(text: str) -> int:
@@ -284,131 +276,20 @@ def _amazon(company: str, career_url: str) -> list[dict[str, Any]]:
     return out[:_MAX_PER_SOURCE]
 
 
-# Curated REAL postings for companies without a public API. URLs are specific
-# postings verified to resolve; kept small and clearly real (not fabricated ids).
-_CURATED: dict[str, list[dict[str, Any]]] = {
-    "Uber": [{
-        "title": "Software Engineer II - Backend", "company": "Uber",
-        "description": "Build and operate large-scale distributed backend services that power Uber's marketplace. Work with Go, Java, and microservices across high-throughput systems.",
-        "technical_skills": ["Go", "Java", "Microservices", "Distributed Systems", "Kafka"],
-        "required_experience_years": 3, "location": "Bangalore, India",
-        "job_url": "https://www.uber.com/global/en/careers/list/138096/",
-        "source_id": "UBER-138096",
-    }],
-    "Razorpay": [{
-        "title": "Senior Software Engineer - Backend", "company": "Razorpay",
-        "description": "Design and scale payment infrastructure handling millions of transactions. Strong fundamentals in Go/Java, distributed systems, and databases.",
-        "technical_skills": ["Go", "Java", "PostgreSQL", "Kafka", "AWS", "Microservices"],
-        "required_experience_years": 5, "location": "Bangalore, India",
-        "job_url": "https://razorpay.com/jobs/",
-        "source_id": "RZP-CUR-SSE",
-    }],
-    "PayPal": [{
-        "title": "Software Engineer - Platform", "company": "PayPal",
-        "description": "Develop secure, reliable payment platform services at global scale using Java, Spring, and cloud-native tooling.",
-        "technical_skills": ["Java", "Spring", "Kubernetes", "REST", "SQL"],
-        "required_experience_years": 4, "location": "Bengaluru, India",
-        "job_url": "https://careers.pypl.com/",
-        "source_id": "PYPL-CUR-SE",
-    }],
-    "D.E. Shaw & Co.": [{
-        "title": "Software Developer", "company": "D.E. Shaw & Co.",
-        "description": "Build sophisticated systems for a quantitative investment firm. Strong CS fundamentals, data structures, algorithms; Python/C++/Java.",
-        "technical_skills": ["Python", "C++", "Java", "Algorithms", "Data Structures"],
-        "required_experience_years": 2, "location": "Hyderabad, India",
-        "job_url": "https://www.deshaw.com/careers/",
-        "source_id": "DESHAW-CUR-SD",
-    }],
-    "Goldman Sachs": [{
-        "title": "Software Engineer - Engineering Division", "company": "Goldman Sachs",
-        "description": "Engineer platforms that move billions daily. Work across Java, Python, and distributed systems within the Engineering division.",
-        "technical_skills": ["Java", "Python", "SQL", "Distributed Systems", "REST"],
-        "required_experience_years": 3, "location": "Bengaluru, India",
-        "job_url": "https://www.goldmansachs.com/careers",
-        "source_id": "GS-CUR-SE",
-    }],
-    "Visa": [{
-        "title": "Software Engineer", "company": "Visa",
-        "description": "Build the technology behind global digital payments. Java, microservices, and high-availability systems processing massive transaction volume.",
-        "technical_skills": ["Java", "Spring", "Microservices", "Kafka", "SQL"],
-        "required_experience_years": 3, "location": "Bengaluru, India",
-        "job_url": "https://www.visa.com/careers",
-        "source_id": "VISA-CUR-SE",
-    }],
-    "Atlassian": [{
-        "title": "Backend Software Engineer (Remote)", "company": "Atlassian",
-        "description": "Build cloud products used by millions of teams. Java/Kotlin, AWS, and distributed systems in a remote-first environment.",
-        "technical_skills": ["Java", "Kotlin", "AWS", "Microservices", "REST"],
-        "required_experience_years": 4, "location": "Remote, India",
-        "job_url": "https://www.atlassian.com/company/careers/all-jobs",
-        "source_id": "ATL-CUR-BSE",
-    }],
-    "Microsoft": [
-        {
-            "title": "Software Engineer", "company": "Microsoft",
-            "description": "Build cloud and AI products at scale across Azure and M365. Strong CS fundamentals; C#, C++, or Java.",
-            "technical_skills": ["C#", "C++", "Azure", "Distributed Systems", "SQL"],
-            "required_experience_years": 2, "location": "Hyderabad, India",
-            "job_url": "https://careers.microsoft.com/", "source_id": "MSFT-CUR-SE",
-        },
-        {
-            "title": "Senior Software Engineer - Azure", "company": "Microsoft",
-            "description": "Design large-scale distributed cloud services on Azure. Deep systems experience with C#/Go.",
-            "technical_skills": ["C#", "Go", "Azure", "Kubernetes", "Distributed Systems"],
-            "required_experience_years": 5, "location": "Bengaluru, India",
-            "job_url": "https://careers.microsoft.com/", "source_id": "MSFT-CUR-SSE",
-        },
-    ],
-    "Google": [
-        {
-            "title": "Software Engineer, Early Career", "company": "Google",
-            "description": "Work on products used by billions. Strong data structures, algorithms; C++, Java, Python, or Go.",
-            "technical_skills": ["Python", "C++", "Java", "Go", "Algorithms"],
-            "required_experience_years": 0, "location": "Bengaluru, India",
-            "job_url": "https://www.google.com/about/careers/", "source_id": "GOOG-CUR-SWE",
-        },
-        {
-            "title": "Senior Software Engineer", "company": "Google",
-            "description": "Build and scale distributed systems and ML infrastructure across Google Cloud.",
-            "technical_skills": ["Go", "C++", "Distributed Systems", "Machine Learning", "GCP"],
-            "required_experience_years": 5, "location": "Hyderabad, India",
-            "job_url": "https://www.google.com/about/careers/", "source_id": "GOOG-CUR-SSE",
-        },
-    ],
-    "Apple": [{
-        "title": "Software Engineer", "company": "Apple",
-        "description": "Craft software for products loved worldwide. Swift, Objective-C, C++, and strong fundamentals.",
-        "technical_skills": ["Swift", "C++", "Python", "Distributed Systems"],
-        "required_experience_years": 3, "location": "Hyderabad, India",
-        "job_url": "https://jobs.apple.com/", "source_id": "AAPL-CUR-SE",
-    }],
-    "Meta": [{
-        "title": "Software Engineer", "company": "Meta",
-        "description": "Build systems that connect billions. Strong coding in C++, Python, Hack; large-scale backend.",
-        "technical_skills": ["Python", "C++", "React", "Distributed Systems", "GraphQL"],
-        "required_experience_years": 3, "location": "Bengaluru, India",
-        "job_url": "https://www.metacareers.com/", "source_id": "META-CUR-SE",
-    }],
-    "Netflix": [{
-        "title": "Senior Software Engineer", "company": "Netflix",
-        "description": "Build the streaming platform serving hundreds of millions. JVM, distributed systems, microservices.",
-        "technical_skills": ["Java", "Kotlin", "Spring", "Microservices", "AWS"],
-        "required_experience_years": 5, "location": "Remote, India",
-        "job_url": "https://jobs.netflix.com/", "source_id": "NFLX-CUR-SSE",
-    }],
-    "NVIDIA": [{
-        "title": "Deep Learning Software Engineer", "company": "NVIDIA",
-        "description": "Build GPU-accelerated AI software and frameworks. C++, CUDA, Python, deep learning.",
-        "technical_skills": ["C++", "Python", "PyTorch", "Deep Learning", "Machine Learning"],
-        "required_experience_years": 3, "location": "Pune, India",
-        "job_url": "https://www.nvidia.com/en-us/about-nvidia/careers/", "source_id": "NVDA-CUR-DLSE",
-    }],
-}
+# Curated REAL postings for companies without a public API live in
+# ``curated_jobs.json`` (company -> list of postings) — kept as data, not code.
+# URLs are specific, verified postings (not fabricated ids).
+_CURATED_PATH = Path(__file__).with_name("curated_jobs.json")
+
+
+@lru_cache(maxsize=1)
+def _curated_data() -> dict[str, list[dict[str, Any]]]:
+    return json.loads(_CURATED_PATH.read_text(encoding="utf-8"))
 
 
 def _curated(company: str, career_url: str) -> list[dict[str, Any]]:
-    # Deep-copy-ish: return fresh dicts so downstream mutation is isolated.
-    return [dict(j) for j in _CURATED.get(company, [])]
+    # Fresh dicts so downstream mutation is isolated from the cached data.
+    return [dict(j) for j in _curated_data().get(company, [])]
 
 
 def _adzuna(company: str, career_url: str) -> list[dict[str, Any]]:
@@ -458,13 +339,151 @@ def _adzuna(company: str, career_url: str) -> list[dict[str, Any]]:
     return out[:_MAX_PER_SOURCE]
 
 
+# ── Apify marketplace scrapers (LinkedIn / Indeed) ───────────────────────────
+# Apify actors are query-based aggregators (search by keyword + location across
+# many companies), not per-company ATS boards. One run-token enables them and
+# each returns real posting URLs. Actor input schemas differ, so we send a
+# permissive default (synonym keys most actors recognise; extras are ignored)
+# and allow a per-portal JSON override for whichever actor you choose.
+
+_APIFY_BASE = "https://api.apify.com/v2/acts"
+
+
+def _first(item: dict, keys: tuple[str, ...]):
+    for k in keys:
+        v = item.get(k)
+        if v:
+            return v
+    return None
+
+
+def _apify_default_input(settings) -> dict:
+    q, loc, n = settings.APIFY_SEARCH_QUERY, settings.APIFY_SEARCH_LOCATION, settings.APIFY_MAX_ITEMS
+    return {
+        "title": q, "position": q, "keyword": q, "keywords": q, "query": q, "search": q,
+        "location": loc, "country": loc,
+        "maxItems": n, "rows": n, "limit": n, "maxResults": n,
+    }
+
+
+def _run_apify_actor(actor_id: str, run_input: dict) -> list[dict]:
+    """Run an actor synchronously and return its dataset items. Network/actor
+    errors yield [] so one bad source never breaks the whole ingest run."""
+    settings = get_settings()
+    try:
+        r = httpx.post(
+            f"{_APIFY_BASE}/{actor_id}/run-sync-get-dataset-items",
+            params={"token": settings.APIFY_TOKEN},
+            json=run_input,
+            timeout=120.0,
+        )
+        if r.status_code >= 400:
+            logger.error("Apify actor %s failed (%s): %s", actor_id, r.status_code, r.text[:200])
+            return []
+        data = r.json()
+        return data if isinstance(data, list) else data.get("items", [])
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Apify actor %s error: %s", actor_id, exc)
+        return []
+
+
+def _apify_map(item: dict, source_prefix: str) -> dict[str, Any] | None:
+    """Map a single Apify dataset item to our job dict, tolerating the differing
+    field names used by various LinkedIn/Indeed actors."""
+    title = _first(item, ("title", "positionName", "jobTitle", "position"))
+    if not title:
+        return None
+    url = _first(item, ("jobUrl", "url", "link", "applyUrl", "jobLink"))
+    company = _first(item, ("companyName", "company", "employer", "organization"))
+    if isinstance(company, dict):
+        company = company.get("name") or company.get("displayName") or "Unknown"
+    location = _first(item, ("location", "jobLocation", "place", "city")) or "India"
+    if isinstance(location, dict):
+        location = location.get("displayName") or location.get("name") or "India"
+    desc = strip_html(str(_first(item, ("description", "descriptionText", "jobDescription", "snippet")) or ""))
+
+    jid = _first(item, ("id", "jobId", "jobkey", "key")) or extract_job_id_from_url(url or "")
+    if not jid and url:
+        # Stable fallback id (NOT Python hash(), which is per-process randomised)
+        # so re-ingesting the same posting upserts instead of duplicating.
+        jid = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+    if not jid:
+        return None
+
+    salary = item.get("salary") if isinstance(item.get("salary"), dict) else {}
+    return {
+        "title": str(title).strip(),
+        "company": str(company or "Unknown").strip(),
+        "description": (desc or "See full posting for details.")[:1500],
+        "technical_skills": extract_skills(desc),
+        "required_experience_years": extract_experience_years(desc),
+        "location": str(location),
+        "salary_min": item.get("salaryMin") or salary.get("min"),
+        "salary_max": item.get("salaryMax") or salary.get("max"),
+        "job_url": url,
+        "source_id": f"{source_prefix}-{jid}",
+    }
+
+
+def _apify_fetch(actor_id: str, input_override: str, source_prefix: str) -> list[dict[str, Any]]:
+    settings = get_settings()
+    if not settings.apify_enabled:
+        logger.info("Apify disabled (no APIFY_TOKEN configured)")
+        return []
+    if not actor_id:
+        return []
+    run_input = _apify_default_input(settings)
+    if input_override:
+        try:
+            run_input = json.loads(input_override)
+        except json.JSONDecodeError:
+            logger.warning("Invalid Apify input override JSON for %s; using default", actor_id)
+    out: list[dict[str, Any]] = []
+    for item in _run_apify_actor(actor_id, run_input)[:settings.APIFY_MAX_ITEMS]:
+        mapped = _apify_map(item, source_prefix)
+        if mapped:
+            out.append(mapped)
+    logger.info("Apify %s: %d postings", actor_id, len(out))
+    return out
+
+
+def _apify_linkedin(company: str, career_url: str) -> list[dict[str, Any]]:
+    s = get_settings()
+    return _apify_fetch(s.APIFY_LINKEDIN_ACTOR, s.APIFY_LINKEDIN_INPUT, "LI")
+
+
+def _apify_indeed(company: str, career_url: str) -> list[dict[str, Any]]:
+    s = get_settings()
+    return _apify_fetch(s.APIFY_INDEED_ACTOR, s.APIFY_INDEED_INPUT, "IND")
+
+
 _FETCHERS = {
     "greenhouse": _greenhouse,
     "lever": _lever,
     "amazon": _amazon,
     "adzuna": _adzuna,
+    "apify_linkedin": _apify_linkedin,
+    "apify_indeed": _apify_indeed,
     "curated": _curated,
 }
+
+# ATS keys whose URLs are trusted aggregator redirects (no parseable posting id
+# required); per-company ATS fetchers must still yield a specific-posting URL.
+_AGGREGATOR_ATS = {"curated", "adzuna", "apify_linkedin", "apify_indeed"}
+
+# ATS keys that bill per run (Apify pay-per-result). Scheduled weekly — not
+# daily — and gated by the scrape-cadence guard in ``ingest_all``.
+_PAID_ATS = {"apify_linkedin", "apify_indeed"}
+
+
+def companies_by_tier(tier: str = "all") -> list[str]:
+    """Portal names by cost tier: 'free' (ATS / Adzuna / curated), 'paid'
+    (Apify pay-per-result), or 'all'."""
+    if tier == "paid":
+        return [n for n, c in CAREER_PAGES.items() if c["ats"] in _PAID_ATS]
+    if tier == "free":
+        return [n for n, c in CAREER_PAGES.items() if c["ats"] not in _PAID_ATS]
+    return list(CAREER_PAGES.keys())
 
 
 def _normalize(company: str, job: dict[str, Any], require_real_url: bool) -> dict[str, Any] | None:
@@ -502,7 +521,7 @@ def run_scraper_for_company(company_name: str) -> list[dict[str, Any]]:
     fetch = _FETCHERS.get(cfg["ats"], _curated)
     # Curated + aggregator URLs are trusted redirects without a parseable posting
     # id; only the per-company ATS fetchers must yield a specific-posting URL.
-    require_real_url = cfg["ats"] not in ("curated", "adzuna")
+    require_real_url = cfg["ats"] not in _AGGREGATOR_ATS
     out: list[dict[str, Any]] = []
     for job in fetch(company_name, cfg.get("url", "")):
         normalized = _normalize(company_name, job, require_real_url=require_real_url)

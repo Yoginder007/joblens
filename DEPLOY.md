@@ -33,17 +33,22 @@ Keep that connection string for step 2.
 3. In the service's **Environment**, set the secret vars (`sync: false` ones):
    - `DATABASE_URL` → the Neon string from step 1 (paste as-is; the app
      normalises `postgresql://` → the psycopg2 driver automatically).
+   - `GOOGLE_API_KEY` → a Gemini API key (used for embeddings + résumé parsing).
    - `SCRAPER_API_KEY` → any strong random string.
    - `CORS_ORIGINS` → leave as a placeholder for now; you'll set it to the
      Vercel URL in step 4 (e.g. `https://joblens.vercel.app`).
-   - `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` → from step 0.
+   - `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` → free job aggregator (from step 0).
+   - **Apify (optional — paid LinkedIn/Indeed, weekly):** `APIFY_TOKEN`,
+     `APIFY_LINKEDIN_INPUT`, `APIFY_INDEED_INPUT` (copy from `backend/.env.example`).
+     Leave `APIFY_TOKEN` blank to disable; the rest of the catalogue still works.
 4. **Deploy.** First boot runs migrations + seeds jobs (`start_prod.sh`), then
    serves. Watch the logs; when healthy, hit `https://<service>.onrender.com/api/health`.
 5. Copy the backend URL (e.g. `https://joblens-api.onrender.com`).
 
 > Free-tier notes: the instance sleeps after ~15 min idle (first request after
-> that takes ~30 s to wake — normal). It runs `EMBEDDING_PROVIDER=deterministic`
-> and eager Celery to fit in 512 MB, both preset in `render.yaml`.
+> that takes ~30 s to wake — normal). It runs `EMBEDDING_PROVIDER=gemini` (an
+> HTTP call — no torch in the 512 MB image) and eager Celery (no Redis/worker),
+> both preset in `render.yaml`. After first deploy, run `POST /api/reembed` once.
 
 ---
 
@@ -73,6 +78,22 @@ Keep that connection string for step 2.
 - After the first successful seed you can set `SEED_ON_START=false` in Render so
   redeploys are faster (jobs persist in Neon).
 - To re-seed manually later: Render **Shell** → `python -m app.scripts.seed_prod`.
+
+## 6. Scraping sources & cost
+
+The catalogue is built from providers on two cadences (GitHub Actions cron):
+
+- **Free (daily, 02:30 UTC):** ATS boards (Greenhouse/Lever/Amazon) + **Adzuna**
+  aggregator + curated postings. No per-call cost.
+- **Paid (weekly, Mon 03:00 UTC):** **Apify** LinkedIn + Indeed actors
+  (pay-per-result). Throttled in-app to once every 7 days via a `scrape_runs`
+  ledger; `APIFY_MAX_ITEMS` caps results billed per run. Est. ~$1–2/month, within
+  Apify's $5 free monthly credit.
+
+Trigger manually (header `X-API-Key: <SCRAPER_API_KEY>`):
+- Free: `POST /api/ingest -d '{"background":true,"tier":"free"}'`
+- Paid: `POST /api/ingest -d '{"background":true,"tier":"paid"}'`
+  (add `"force":true` to bypass the weekly guard).
 
 ## Troubleshooting
 

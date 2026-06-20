@@ -94,7 +94,7 @@ export default function MultiDropdown({
       <div
         onClick={() => { if (!disabled) { setOpen(true); inputRef.current?.focus(); } }}
         className={`min-h-[42px] w-full px-2.5 py-1.5 bg-fg/[0.04] border rounded-xl flex flex-wrap items-center gap-1.5 cursor-text transition-all ${
-          open ? "border-violet-400/60 ring-2 ring-violet-500/15" : "border-fg/10 hover:bg-fg/[0.06]"
+          open ? "border-ring ring-2 ring-ring/20" : "border-fg/10 hover:bg-fg/[0.06]"
         } ${disabled ? "opacity-50 pointer-events-none" : ""}`}
       >
         <AnimatePresence initial={false}>
@@ -106,11 +106,11 @@ export default function MultiDropdown({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.7 }}
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium bg-violet-500/15 text-violet-700 dark:text-violet-200 border border-violet-400/25"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium bg-secondary text-secondary-foreground border border-border"
             >
               {v}
               <button type="button" onClick={(e) => { e.stopPropagation(); remove(v); }}
-                className="hover:text-rose-500 transition-colors" aria-label={`Remove ${v}`}>
+                className="hover:text-destructive transition-colors" aria-label={`Remove ${v}`}>
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -158,7 +158,7 @@ export default function MultiDropdown({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.15, delay: Math.min(i * 0.012, 0.18) }}
                 className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
-                  i === active ? "bg-violet-500/15 text-fg" : "text-fg/70"
+                  i === active ? "bg-secondary text-fg" : "text-fg/70"
                 }`}
               >
                 <span className="truncate">{opt.label}</span>

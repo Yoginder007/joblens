@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
@@ -9,26 +9,25 @@ import ProcessingState from "@/components/ProcessingState";
 import ResultsDashboard from "@/components/ResultsDashboard";
 import RecentJobsPanel from "@/components/RecentJobsPanel";
 import ThemeToggle from "@/components/ThemeToggle";
-import AuroraBackground from "@/components/AuroraBackground";
 import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
+import { Button } from "@/components/ui/button";
 import {
   createCandidate,
   uploadResume,
-  pollResumeUntilReady,
+  streamResumeUntilReady,
   getEligibleJobs,
   searchJobs,
   type SearchFilters,
   type EligibleJobsResponse,
 } from "@/lib/api";
-import { setSession, patchSession, getSession, clearSession, getToken } from "@/lib/session";
+import { setSession, patchSession, getToken } from "@/lib/session";
+import { useAuth } from "@/lib/useAuth";
 import { fadeUp, swap } from "@/lib/motion";
 
 type Phase = "configure" | "processing" | "results";
 type Tab = "match" | "browse";
 
-// Backend base URL — same source the API client uses, so footer links resolve
-// to the deployed API in production and localhost in dev.
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function Home() {
@@ -46,49 +45,33 @@ export default function Home() {
 
   const [scrolled, setScrolled] = useState(false);
 
-  // Auth state (hydrated from the persisted session on mount).
-  const [authed, setAuthed] = useState(false);
-  const [acctEmail, setAcctEmail] = useState<string | undefined>();
-  const [acctName, setAcctName] = useState<string | undefined>();
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const auth = useAuth();
+  const { authed, acctEmail, acctName, authOpen, authMode, openAuth } = auth;
 
   const filtersRef = useRef<SearchFilters>({});
 
   useEffect(() => {
-    // Exact catalogue size from the search total (uncapped, one cheap query).
     searchJobs({ limit: 1, include_facets: false })
       .then((res) => setBrowseJobCount(res.total))
       .catch(() => setBrowseJobCount(0));
   }, []);
 
-  // Hydrate auth state from the stored session (client-only, one-shot).
   useEffect(() => {
-    const s = getSession();
-    if (s?.account) {
+    // Mirror the signed-in account into the editable form fields.
+    if (authed) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAuthed(true);
-      setAcctEmail(s.email);
-      setAcctName(s.fullName);
-      if (s.email) setEmail(s.email);
-      if (s.fullName) setFullName(s.fullName);
+      if (acctEmail) setEmail(acctEmail);
+      if (acctName) setFullName(acctName);
     }
-  }, []);
-
-  const openAuth = (mode: "login" | "signup") => { setAuthMode(mode); setAuthOpen(true); };
+  }, [authed, acctEmail, acctName]);
 
   const handleSignOut = () => {
-    clearSession();
-    setAuthed(false);
-    setAcctEmail(undefined);
-    setAcctName(undefined);
+    auth.signOut();
     setEmail("");
     setFullName("");
     handleReset();
   };
 
-  // Strengthen the header background once the page scrolls so content can't
-  // bleed through the translucent bar.
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
     onScroll();
@@ -109,10 +92,8 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // Logged-in users reuse their account session; guests get a one-time token.
       let token = getToken();
       if (authed && token) {
-        // keep existing account session
       } else {
         const candidate = await createCandidate(email, fullName);
         token = candidate.access_token;
@@ -124,7 +105,7 @@ export default function Home() {
       setPhase("processing");
       setProcessingStatus("pending");
 
-      const readyResume = await pollResumeUntilReady(token, resume.id, (status) => {
+      const readyResume = await streamResumeUntilReady(token, resume.id, (status) => {
         setProcessingStatus(status);
       });
       patchSession({ resumeId: readyResume.id });
@@ -141,7 +122,6 @@ export default function Home() {
       const message = err instanceof Error ? err.message : "Something went wrong";
       setError(message);
       setPhase("configure");
-      // Guest flow hit a password-protected account → route them to login.
       if (/log in/i.test(message)) openAuth("login");
     } finally {
       setIsSubmitting(false);
@@ -163,13 +143,11 @@ export default function Home() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="relative min-h-screen text-fg">
-        {/* ── Aurora background (cursor-parallax) ── */}
-        <AuroraBackground />
-
+      <div className="relative min-h-screen text-foreground bg-background font-sans selection:bg-muted selection:text-foreground">
+        
         {/* ── Header ── */}
         <header className="sticky top-0 z-30">
-          <div className={`border-x-0 border-t-0 transition-all duration-150 ${scrolled ? "header-solid" : "glass"}`}>
+          <div className={`transition-all duration-150 ${scrolled ? "bg-background/80 backdrop-blur-md border-b border-border shadow-sm" : "bg-transparent border-b border-transparent"}`}>
             <div className="max-w-6xl mx-auto px-6 py-3.5 flex items-center justify-between gap-4">
               <motion.div
                 initial={{ opacity: 0, x: -16 }}
@@ -177,46 +155,38 @@ export default function Home() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="flex items-center gap-3"
               >
-                <div className="w-9 h-9 rounded-2xl bg-accent flex items-center justify-center shadow-[0_0_24px_rgba(139,92,246,0.5)]">
-                  {/* JobLens mark: a lens/aperture focusing on the right role */}
-                  <svg className="w-5 h-5 on-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <motion.circle
-                      cx="11" cy="11" r="7" strokeWidth={2}
-                      animate={{ rotate: 360 }} style={{ transformOrigin: "11px 11px" }}
-                      transition={{ duration: 14, repeat: Infinity, ease: "linear" }}
-                      strokeDasharray="3 3"
-                    />
+                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                  <svg className="w-4 h-4 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <circle cx="11" cy="11" r="3" strokeWidth={2} />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 16.5L21 21" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-sm font-extrabold tracking-tight text-fg">JobLens</h1>
-                  <p className="text-[10px] text-fg/35 uppercase tracking-[0.2em]">Resume → Roles</p>
+                  <h1 className="text-sm font-semibold tracking-tight">JobLens</h1>
                 </div>
               </motion.div>
 
               {/* Tab switcher */}
-              <div className="relative flex items-center gap-1 glass rounded-2xl p-1">
+              <div className="relative flex items-center gap-1 bg-muted rounded-lg p-1">
                 {TABS.map((t) => (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => { setActiveTab(t.id); handleReset(); }}
-                    className={`relative px-4 py-2 rounded-xl text-xs font-semibold transition-colors z-10 flex items-center gap-2 ${
-                      activeTab === t.id ? "on-accent" : "text-fg/45 hover:text-fg/80"
+                    className={`relative px-4 py-1.5 rounded-md text-sm font-medium transition-colors z-10 flex items-center gap-2 ${
+                      activeTab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     {activeTab === t.id && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute inset-0 bg-accent rounded-xl shadow-[0_0_20px_rgba(139,92,246,0.45)]"
+                        className="absolute inset-0 bg-background rounded-md shadow-sm border border-border"
                         transition={{ type: "spring", stiffness: 380, damping: 30 }}
                       />
                     )}
                     <span className="relative z-10">{t.label}</span>
                     {t.id === "browse" && browseJobCount ? (
-                      <span className="relative z-10 px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-fg/15 tabular-nums">
+                      <span className="relative z-10 px-1.5 py-0.5 rounded-sm text-[10px] font-mono bg-muted-foreground/10 tabular-nums">
                         {browseJobCount}
                       </span>
                     ) : null}
@@ -224,20 +194,18 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex items-center justify-end gap-3">
                 <AnimatePresence>
                   {activeTab === "match" && phase === "results" && (
-                    <motion.button
+                    <motion.div
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.9 }}
-                      whileHover={{ scale: 1.03 }}
-                      whileTap={{ scale: 0.97 }}
-                      onClick={handleReset}
-                      className="px-4 py-2 rounded-xl glass glass-hover text-xs font-semibold text-fg/70"
                     >
-                      New Search
-                    </motion.button>
+                      <Button variant="outline" size="sm" onClick={handleReset}>
+                        New Search
+                      </Button>
+                    </motion.div>
                   )}
                 </AnimatePresence>
                 <ThemeToggle />
@@ -258,14 +226,11 @@ export default function Home() {
         <AuthModal
           open={authOpen}
           initialMode={authMode}
-          onClose={() => setAuthOpen(false)}
+          onClose={auth.closeAuth}
           onAuthed={(user) => {
-            setAuthed(true);
-            setAcctEmail(user.email);
-            setAcctName(user.full_name);
+            auth.signIn(user);
             setEmail(user.email);
             setFullName(user.full_name);
-            setAuthOpen(false);
           }}
         />
 
@@ -278,13 +243,13 @@ export default function Home() {
               exit={{ opacity: 0, y: -10 }}
               className="relative z-20 max-w-6xl mx-auto px-6 mt-4"
             >
-              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-rose-500/10 border border-rose-500/25 text-sm text-rose-300 backdrop-blur-xl">
-                <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
-                <span className="flex-1">{error}</span>
-                <button onClick={() => setError(null)} className="text-rose-300/60 hover:text-rose-200">
+                <span className="flex-1 font-medium">{error}</span>
+                <button onClick={() => setError(null)} className="text-destructive/70 hover:text-destructive">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
@@ -295,7 +260,7 @@ export default function Home() {
         </AnimatePresence>
 
         {/* ── Main ── */}
-        <main className="relative z-10 max-w-6xl mx-auto px-6 py-10">
+        <main className="relative z-10 max-w-6xl mx-auto px-6 py-12">
           <AnimatePresence mode="wait">
             {/* ─── Browse ─── */}
             {activeTab === "browse" && (
@@ -303,9 +268,9 @@ export default function Home() {
                 <Hero
                   title={
                     <>
-                      <span className="text-gradient-animate">Discover </span>
+                      <span>Discover </span>
                       <RotatingWord
-                        className="text-gradient-animate"
+                        className="text-primary"
                         words={["every open role.", "your next role.", "the perfect fit."]}
                       />
                     </>
@@ -317,18 +282,15 @@ export default function Home() {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.25, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                      className="mt-5 flex items-center justify-center gap-2 flex-wrap"
+                      className="mt-6 flex items-center justify-center gap-3 flex-wrap"
                     >
-                      <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass text-xs font-semibold text-fg/70">
+                      <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-background text-sm font-medium">
                         <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400" />
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-60" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
                         </span>
                         <AnimatedNumber value={browseJobCount} />
-                        <span className="text-fg/45 font-medium">live roles</span>
-                      </span>
-                      <span className="px-3.5 py-1.5 rounded-full glass text-xs font-medium text-fg/50">
-                        Real apply links
+                        <span className="text-muted-foreground font-normal">live roles</span>
                       </span>
                     </motion.div>
                   )}
@@ -366,7 +328,7 @@ export default function Home() {
             {/* ─── Match: processing ─── */}
             {activeTab === "match" && phase === "processing" && (
               <motion.div key="processing" variants={swap} initial="hidden" animate="show" exit="exit" className="max-w-lg mx-auto">
-                <div className="glass-strong rounded-3xl">
+                <div className="p-8 border border-border rounded-xl bg-card shadow-sm">
                   <ProcessingState status={processingStatus} fileName={file?.name || "resume.pdf"} />
                 </div>
               </motion.div>
@@ -382,14 +344,14 @@ export default function Home() {
         </main>
 
         {/* ── Footer ── */}
-        <footer className="relative z-10 border-t border-fg/[0.06] mt-16">
-          <div className="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-fg/25">JobLens · Powered by FastAPI + Next.js</p>
-            <div className="flex items-center gap-4">
+        <footer className="relative z-10 border-t border-border mt-24">
+          <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground font-medium">JobLens · Powered by FastAPI + Next.js</p>
+            <div className="flex items-center gap-6">
               <a href={`${API_BASE}/api/docs`} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-violet-500 dark:text-violet-300/50 hover:text-violet-200 transition-colors">API Docs</a>
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors">API Docs</a>
               <a href={`${API_BASE}/api/health`} target="_blank" rel="noopener noreferrer"
-                className="text-xs text-violet-500 dark:text-violet-300/50 hover:text-violet-200 transition-colors">Health</a>
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors">Health</a>
             </div>
           </div>
         </footer>
@@ -400,12 +362,13 @@ export default function Home() {
 
 function Hero({ title, subtitle, children }: { title: React.ReactNode; subtitle: string; children?: React.ReactNode }) {
   return (
-    <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center mb-10">
-      <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4 leading-[1.1]">
-        {typeof title === "string" ? <span className="text-gradient-animate">{title}</span> : title}
+    <motion.div variants={fadeUp} initial="hidden" animate="show" className="text-center mb-12">
+      <h2 className="text-4xl md:text-5xl font-semibold tracking-tight mb-4 leading-tight text-foreground">
+        {title}
       </h2>
-      <p className="text-sm text-fg/45 max-w-lg mx-auto leading-relaxed">{subtitle}</p>
+      <p className="text-base text-muted-foreground max-w-lg mx-auto leading-relaxed">{subtitle}</p>
       {children}
     </motion.div>
   );
 }
+

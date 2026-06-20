@@ -39,6 +39,13 @@ frontend/out/
 frontend/build/
 .turbo/
 
+# Screenshot harness + site-inspection output (throwaway visual artifacts)
+frontend/.shots/
+frontend/.inspect/
+
+# Local agent tooling (not part of the deployable app)
+.agents/
+
 # Build / dist
 dist/
 build/

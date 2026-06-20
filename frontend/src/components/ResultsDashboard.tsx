@@ -57,21 +57,21 @@ export default function ResultsDashboard({ data, filters = {} }: ResultsDashboar
       {/* Stats */}
       <motion.div variants={staggerContainer(0.1)} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <motion.div variants={staggerItem} className="rounded-2xl glass p-5">
-          <p className="text-[10px] text-violet-500 dark:text-violet-300/70 uppercase tracking-[0.18em] font-semibold">Total Matches</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-[0.18em] font-semibold">Total Matches</p>
           <p className="text-3xl font-bold text-fg mt-1"><AnimatedNumber value={data.total_eligible} /></p>
           <p className="text-xs text-fg/30 mt-1">across {sources.length} source{sources.length !== 1 ? "s" : ""}</p>
         </motion.div>
         <motion.div variants={staggerItem} className="rounded-2xl glass p-5">
-          <p className="text-[10px] text-emerald-300/70 uppercase tracking-[0.18em] font-semibold">Avg Score</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-[0.18em] font-semibold">Avg Score</p>
           <p className="text-3xl font-bold text-fg mt-1"><AnimatedNumber value={avgScore} decimals={1} suffix="%" /></p>
           <p className="text-xs text-fg/30 mt-1">{data.candidate_experience_years}y experience matched</p>
         </motion.div>
         <motion.div variants={staggerItem} className="rounded-2xl glass p-5">
-          <p className="text-[10px] text-rose-300/70 uppercase tracking-[0.18em] font-semibold">Most Missing Skills</p>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-[0.18em] font-semibold">Most Missing Skills</p>
           <div className="flex flex-wrap gap-1 mt-2">
             {topMissingSkills.length > 0
               ? topMissingSkills.slice(0, 4).map((s) => (
-                  <span key={s} className="px-2 py-0.5 rounded text-[10px] bg-rose-500/10 text-rose-300/70 border border-rose-400/15">{s}</span>
+                  <span key={s} className="px-2 py-0.5 rounded text-[10px] bg-muted text-muted-foreground border border-border">{s}</span>
                 ))
               : <span className="text-xs text-fg/30 italic">None</span>}
           </div>
@@ -84,11 +84,11 @@ export default function ResultsDashboard({ data, filters = {} }: ResultsDashboar
           {sources.map((source) => (
             <button key={source} onClick={() => setActiveSource(source)}
               className={`relative flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors z-10 ${
-                visibleSource === source ? "text-violet-600 dark:text-white" : "text-fg/40 hover:text-fg/70"
+                visibleSource === source ? "text-foreground" : "text-fg/40 hover:text-fg/70"
               }`}
             >
               {visibleSource === source && (
-                <motion.div layoutId="activeSourceTab" className="absolute inset-0 bg-accent/20 border border-violet-400/40 rounded-xl -z-10"
+                <motion.div layoutId="activeSourceTab" className="absolute inset-0 bg-secondary border border-border rounded-xl -z-10"
                   transition={{ type: "spring", stiffness: 380, damping: 30 }} />
               )}
               <span className="w-5 h-5 rounded-md bg-fg/8 flex items-center justify-center text-[10px] font-bold">{grouped[source].length}</span>

@@ -11,11 +11,10 @@ behaves identically whether embeddings arrive as Python lists or NumPy arrays
 import logging
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.upsert import upsert
 from app.domains.jobs.repository import JobFilters, JobRepository
 from app.domains.jobs.schemas import JobResponse
 from app.domains.matching.models import JobMatch
@@ -197,27 +196,16 @@ class MatchingService:
             matched_skills=res.matched_skills,
             reasoning=res.reasoning,
         )
-        update_cols = (
-            "match_score", "hard_filter_passed", "semantic_similarity",
-            "skill_match_percentage", "matched_skills", "reasoning",
+        upsert(
+            self.db, JobMatch, values,
+            conflict_constraint="uq_resume_job_match",
+            update_cols=(
+                "match_score", "hard_filter_passed", "semantic_similarity",
+                "skill_match_percentage", "matched_skills", "reasoning",
+            ),
+            match_by=("resume_id", "job_id"),
+            touch_updated_at=True,
         )
-        if self.db.bind.dialect.name == "postgresql":
-            stmt = pg_insert(JobMatch).values(**values).on_conflict_do_update(
-                constraint="uq_resume_job_match",
-                set_={**{c: values[c] for c in update_cols}, "updated_at": func.now()},
-            )
-            self.db.execute(stmt)
-        else:
-            existing = self.db.scalar(
-                select(JobMatch).where(
-                    JobMatch.resume_id == resume_id, JobMatch.job_id == job_id
-                )
-            )
-            if existing:
-                for c in update_cols:
-                    setattr(existing, c, values[c])
-            else:
-                self.db.add(JobMatch(**values))
 
     def score_candidates(
         self, resume: Resume, filters: JobFilters, limit: int, min_score: float

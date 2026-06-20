@@ -8,10 +8,11 @@ name: Scheduled maintenance
 
 on:
   schedule:
-    - cron: "30 2 * * *"   # 02:30 UTC daily  — refresh catalogue + stale cleanup
+    - cron: "30 2 * * *"   # 02:30 UTC daily  — refresh FREE catalogue + stale cleanup
+    - cron: "0 3 * * 1"    # 03:00 UTC Monday — weekly PAID (Apify) scrape
     - cron: "0 8 * * *"    # 08:00 UTC daily  — daily alerts
     - cron: "15 8 * * 1"   # 08:15 UTC Monday — weekly alerts
-  workflow_dispatch: {}    # manual run (executes all jobs)
+  workflow_dispatch: {}    # manual run (executes all jobs; paid scrape still weekly-guarded)
 
 env:
   API: https://joblens-api-xi3l.onrender.com
@@ -36,12 +37,48 @@ jobs:
             -X POST "$API/api/maintenance/stale?days=30" \
             -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
 
-      - name: Re-ingest all portals (background)
+      - name: Re-ingest FREE portals (background) — ATS + Adzuna, no per-call cost
         run: |
           curl -sf -X POST "$API/api/ingest" \
             -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{"background": true}'
+            -d '{"background": true, "tier": "free"}'
+
+      - name: Poll ingest until done (keeps the dyno alive for the run)
+        run: |
+          for i in $(seq 1 40); do
+            sleep 30
+            state=$(curl -sf "$API/api/ingest/status" \
+              -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state","?"))')
+            echo "poll $i: $state"
+            [ "$state" = "done" ] && exit 0
+            [ "$state" = "failed" ] && exit 1
+          done
+          echo "timed out waiting for ingest" && exit 1
+
+  scrape-paid:
+    name: Weekly Apify (paid) scrape
+    # Serialize after refresh on manual dispatch. The API's weekly guard skips
+    # paid sources if the last paid run was < 7 days ago, so manual dispatches
+    # within the week cost nothing.
+    needs: refresh
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 3 * * 1')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the server
+        run: |
+          for i in $(seq 1 12); do
+            curl -sf "$API/api/health" > /dev/null && exit 0
+            sleep 15
+          done
+          echo "server did not wake in time" && exit 1
+
+      - name: Ingest PAID portals (Apify LinkedIn + Indeed, background)
+        run: |
+          curl -sf -X POST "$API/api/ingest" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"background": true, "tier": "paid"}'
 
       - name: Poll ingest until done (keeps the dyno alive for the run)
         run: |
@@ -57,10 +94,10 @@ jobs:
 
   daily-alerts:
     name: Run daily alert subscriptions
-    # Serialize after refresh on manual dispatch — running everything in
+    # Serialize after the scrapes on manual dispatch — running everything in
     # parallel can overload the single 512 MB dyno. always() keeps this job
-    # alive on scheduled runs where refresh is skipped.
-    needs: refresh
+    # alive on scheduled runs where the upstream jobs are skipped.
+    needs: scrape-paid
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 8 * * *')
     runs-on: ubuntu-latest
     steps:

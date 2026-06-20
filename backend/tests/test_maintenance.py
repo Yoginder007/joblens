@@ -65,3 +65,29 @@ def test_ingest_status_gated_and_idle(client):
     r = client.get("/api/ingest/status", headers=KEY)
     assert r.status_code == 200
     assert "state" in r.json()
+
+
+def test_paid_scrape_weekly_guard():
+    """A paid (Apify) run within 7 days of the last one is skipped; force overrides."""
+    from datetime import datetime, timezone
+
+    from app.core.database import SessionLocal
+    from app.domains.ingestion.models import ScrapeRun
+    from app.domains.ingestion.service import ingest_all
+
+    db = SessionLocal()
+    try:
+        db.add(ScrapeRun(tier="paid", companies=["LinkedIn"], returned=10,
+                         inserted=10, updated=0, run_at=datetime.now(timezone.utc)))
+        db.commit()
+    finally:
+        db.close()
+
+    # Recent paid run → the paid tier is skipped entirely (no cost incurred).
+    out = ingest_all(tier="paid")
+    assert set(out["skipped_paid"]) == {"LinkedIn", "Indeed"}
+    assert out["total_inserted"] == 0
+
+    # force=True bypasses the guard (actors are token-disabled in tests → 0 jobs).
+    out2 = ingest_all(tier="paid", force=True)
+    assert out2["skipped_paid"] == []

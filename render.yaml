@@ -49,3 +49,17 @@ services:
         sync: false
       - key: ADZUNA_COUNTRY
         value: in
+      # ── Apify scrapers (paid, weekly). Token + per-actor input JSON are
+      #    secrets/long → set them in the dashboard; actor ids + cap are safe defaults.
+      - key: APIFY_TOKEN
+        sync: false
+      - key: APIFY_LINKEDIN_ACTOR
+        value: curious_coder~linkedin-jobs-scraper
+      - key: APIFY_INDEED_ACTOR
+        value: misceres~indeed-scraper
+      - key: APIFY_MAX_ITEMS
+        value: "50"
+      - key: APIFY_LINKEDIN_INPUT
+        sync: false
+      - key: APIFY_INDEED_INPUT
+        sync: false

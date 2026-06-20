@@ -58,10 +58,10 @@ def ingest_portals(payload: IngestRequest, background: BackgroundTasks):
     if payload.background:
         if INGEST_STATUS.get("state") == "running":
             return IngestResponse(status="already-running", results=[], total_inserted=0, total_updated=0)
-        background.add_task(ingest_all, payload.companies or None)
+        background.add_task(ingest_all, payload.companies or None, payload.tier, payload.force)
         return IngestResponse(status="started", results=[], total_inserted=0, total_updated=0)
 
-    out = ingest_all(payload.companies or None)
+    out = ingest_all(payload.companies or None, payload.tier, payload.force)
     return IngestResponse(
         status="ok",
         results=[IngestResult(**r) for r in out["results"]],

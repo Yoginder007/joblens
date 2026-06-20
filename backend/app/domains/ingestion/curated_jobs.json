@@ -1,0 +1,268 @@
+{
+  "Uber": [
+    {
+      "title": "Software Engineer II - Backend",
+      "company": "Uber",
+      "description": "Build and operate large-scale distributed backend services that power Uber's marketplace. Work with Go, Java, and microservices across high-throughput systems.",
+      "technical_skills": [
+        "Go",
+        "Java",
+        "Microservices",
+        "Distributed Systems",
+        "Kafka"
+      ],
+      "required_experience_years": 3,
+      "location": "Bangalore, India",
+      "job_url": "https://www.uber.com/global/en/careers/list/138096/",
+      "source_id": "UBER-138096"
+    }
+  ],
+  "Razorpay": [
+    {
+      "title": "Senior Software Engineer - Backend",
+      "company": "Razorpay",
+      "description": "Design and scale payment infrastructure handling millions of transactions. Strong fundamentals in Go/Java, distributed systems, and databases.",
+      "technical_skills": [
+        "Go",
+        "Java",
+        "PostgreSQL",
+        "Kafka",
+        "AWS",
+        "Microservices"
+      ],
+      "required_experience_years": 5,
+      "location": "Bangalore, India",
+      "job_url": "https://razorpay.com/jobs/",
+      "source_id": "RZP-CUR-SSE"
+    }
+  ],
+  "PayPal": [
+    {
+      "title": "Software Engineer - Platform",
+      "company": "PayPal",
+      "description": "Develop secure, reliable payment platform services at global scale using Java, Spring, and cloud-native tooling.",
+      "technical_skills": [
+        "Java",
+        "Spring",
+        "Kubernetes",
+        "REST",
+        "SQL"
+      ],
+      "required_experience_years": 4,
+      "location": "Bengaluru, India",
+      "job_url": "https://careers.pypl.com/",
+      "source_id": "PYPL-CUR-SE"
+    }
+  ],
+  "D.E. Shaw & Co.": [
+    {
+      "title": "Software Developer",
+      "company": "D.E. Shaw & Co.",
+      "description": "Build sophisticated systems for a quantitative investment firm. Strong CS fundamentals, data structures, algorithms; Python/C++/Java.",
+      "technical_skills": [
+        "Python",
+        "C++",
+        "Java",
+        "Algorithms",
+        "Data Structures"
+      ],
+      "required_experience_years": 2,
+      "location": "Hyderabad, India",
+      "job_url": "https://www.deshaw.com/careers/",
+      "source_id": "DESHAW-CUR-SD"
+    }
+  ],
+  "Goldman Sachs": [
+    {
+      "title": "Software Engineer - Engineering Division",
+      "company": "Goldman Sachs",
+      "description": "Engineer platforms that move billions daily. Work across Java, Python, and distributed systems within the Engineering division.",
+      "technical_skills": [
+        "Java",
+        "Python",
+        "SQL",
+        "Distributed Systems",
+        "REST"
+      ],
+      "required_experience_years": 3,
+      "location": "Bengaluru, India",
+      "job_url": "https://www.goldmansachs.com/careers",
+      "source_id": "GS-CUR-SE"
+    }
+  ],
+  "Visa": [
+    {
+      "title": "Software Engineer",
+      "company": "Visa",
+      "description": "Build the technology behind global digital payments. Java, microservices, and high-availability systems processing massive transaction volume.",
+      "technical_skills": [
+        "Java",
+        "Spring",
+        "Microservices",
+        "Kafka",
+        "SQL"
+      ],
+      "required_experience_years": 3,
+      "location": "Bengaluru, India",
+      "job_url": "https://www.visa.com/careers",
+      "source_id": "VISA-CUR-SE"
+    }
+  ],
+  "Atlassian": [
+    {
+      "title": "Backend Software Engineer (Remote)",
+      "company": "Atlassian",
+      "description": "Build cloud products used by millions of teams. Java/Kotlin, AWS, and distributed systems in a remote-first environment.",
+      "technical_skills": [
+        "Java",
+        "Kotlin",
+        "AWS",
+        "Microservices",
+        "REST"
+      ],
+      "required_experience_years": 4,
+      "location": "Remote, India",
+      "job_url": "https://www.atlassian.com/company/careers/all-jobs",
+      "source_id": "ATL-CUR-BSE"
+    }
+  ],
+  "Microsoft": [
+    {
+      "title": "Software Engineer",
+      "company": "Microsoft",
+      "description": "Build cloud and AI products at scale across Azure and M365. Strong CS fundamentals; C#, C++, or Java.",
+      "technical_skills": [
+        "C#",
+        "C++",
+        "Azure",
+        "Distributed Systems",
+        "SQL"
+      ],
+      "required_experience_years": 2,
+      "location": "Hyderabad, India",
+      "job_url": "https://careers.microsoft.com/",
+      "source_id": "MSFT-CUR-SE"
+    },
+    {
+      "title": "Senior Software Engineer - Azure",
+      "company": "Microsoft",
+      "description": "Design large-scale distributed cloud services on Azure. Deep systems experience with C#/Go.",
+      "technical_skills": [
+        "C#",
+        "Go",
+        "Azure",
+        "Kubernetes",
+        "Distributed Systems"
+      ],
+      "required_experience_years": 5,
+      "location": "Bengaluru, India",
+      "job_url": "https://careers.microsoft.com/",
+      "source_id": "MSFT-CUR-SSE"
+    }
+  ],
+  "Google": [
+    {
+      "title": "Software Engineer, Early Career",
+      "company": "Google",
+      "description": "Work on products used by billions. Strong data structures, algorithms; C++, Java, Python, or Go.",
+      "technical_skills": [
+        "Python",
+        "C++",
+        "Java",
+        "Go",
+        "Algorithms"
+      ],
+      "required_experience_years": 0,
+      "location": "Bengaluru, India",
+      "job_url": "https://www.google.com/about/careers/",
+      "source_id": "GOOG-CUR-SWE"
+    },
+    {
+      "title": "Senior Software Engineer",
+      "company": "Google",
+      "description": "Build and scale distributed systems and ML infrastructure across Google Cloud.",
+      "technical_skills": [
+        "Go",
+        "C++",
+        "Distributed Systems",
+        "Machine Learning",
+        "GCP"
+      ],
+      "required_experience_years": 5,
+      "location": "Hyderabad, India",
+      "job_url": "https://www.google.com/about/careers/",
+      "source_id": "GOOG-CUR-SSE"
+    }
+  ],
+  "Apple": [
+    {
+      "title": "Software Engineer",
+      "company": "Apple",
+      "description": "Craft software for products loved worldwide. Swift, Objective-C, C++, and strong fundamentals.",
+      "technical_skills": [
+        "Swift",
+        "C++",
+        "Python",
+        "Distributed Systems"
+      ],
+      "required_experience_years": 3,
+      "location": "Hyderabad, India",
+      "job_url": "https://jobs.apple.com/",
+      "source_id": "AAPL-CUR-SE"
+    }
+  ],
+  "Meta": [
+    {
+      "title": "Software Engineer",
+      "company": "Meta",
+      "description": "Build systems that connect billions. Strong coding in C++, Python, Hack; large-scale backend.",
+      "technical_skills": [
+        "Python",
+        "C++",
+        "React",
+        "Distributed Systems",
+        "GraphQL"
+      ],
+      "required_experience_years": 3,
+      "location": "Bengaluru, India",
+      "job_url": "https://www.metacareers.com/",
+      "source_id": "META-CUR-SE"
+    }
+  ],
+  "Netflix": [
+    {
+      "title": "Senior Software Engineer",
+      "company": "Netflix",
+      "description": "Build the streaming platform serving hundreds of millions. JVM, distributed systems, microservices.",
+      "technical_skills": [
+        "Java",
+        "Kotlin",
+        "Spring",
+        "Microservices",
+        "AWS"
+      ],
+      "required_experience_years": 5,
+      "location": "Remote, India",
+      "job_url": "https://jobs.netflix.com/",
+      "source_id": "NFLX-CUR-SSE"
+    }
+  ],
+  "NVIDIA": [
+    {
+      "title": "Deep Learning Software Engineer",
+      "company": "NVIDIA",
+      "description": "Build GPU-accelerated AI software and frameworks. C++, CUDA, Python, deep learning.",
+      "technical_skills": [
+        "C++",
+        "Python",
+        "PyTorch",
+        "Deep Learning",
+        "Machine Learning"
+      ],
+      "required_experience_years": 3,
+      "location": "Pune, India",
+      "job_url": "https://www.nvidia.com/en-us/about-nvidia/careers/",
+      "source_id": "NVDA-CUR-DLSE"
+    }
+  ]
+}

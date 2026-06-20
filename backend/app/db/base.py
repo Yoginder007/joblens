@@ -7,6 +7,7 @@ metadata. Order doesn't matter — SQLAlchemy resolves relationships by class na
 """
 from app.core.database import Base  # noqa: F401
 from app.domains.candidates.models import Candidate  # noqa: F401
+from app.domains.ingestion.models import ScrapeRun  # noqa: F401
 from app.domains.jobs.models import Job, JobBoard  # noqa: F401
 from app.domains.matching.models import JobMatch  # noqa: F401
 from app.domains.resumes.models import Resume  # noqa: F401
@@ -21,4 +22,5 @@ __all__ = [
     "JobMatch",
     "Subscription",
     "AlertDelivery",
+    "ScrapeRun",
 ]

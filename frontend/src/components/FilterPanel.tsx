@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { getPortals, getFilterOptions, type FilterOptions, type Portal, type SearchFilters } from "@/lib/api";
+import { getPortals, type Portal, type SearchFilters } from "@/lib/api";
 import Dropdown, { type DropdownOption } from "./Dropdown";
+import { useFilterOptions } from "@/lib/useFilterOptions";
 
 interface FilterPanelProps {
   onFiltersChange: (filters: SearchFilters) => void;
@@ -44,7 +45,9 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
   const [matchMode, setMatchMode] = useState<"semantic" | "direct">("semantic");
   const [portals, setPortals] = useState<Portal[]>([]);
   const [selectedPortals, setSelectedPortals] = useState<string[]>([]);
-  const [opts, setOpts] = useState<FilterOptions | null>(null);
+
+  // Shared with the browse filter UI (countries-first location dedupe etc.).
+  const { locationOptions, titleOptions } = useFilterOptions();
 
   const onFiltersChangeRef = useRef(onFiltersChange);
   useEffect(() => {
@@ -58,29 +61,7 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
         setSelectedPortals(p.map((x) => x.company));
       })
       .catch(console.error);
-    getFilterOptions().then(setOpts).catch(console.error);
   }, []);
-
-  // Searchable option lists, sourced from live data (countries first for location).
-  const locationOptions = useMemo<DropdownOption[]>(() => {
-    const seen = new Set<string>();
-    const out: DropdownOption[] = [];
-    for (const c of opts?.countries || []) {
-      if (seen.has(c.toLowerCase())) continue;
-      seen.add(c.toLowerCase());
-      out.push({ value: c, label: `${c} — all`, hint: "country" });
-    }
-    for (const l of opts?.locations || []) {
-      if (seen.has(l.toLowerCase())) continue;
-      seen.add(l.toLowerCase());
-      out.push({ value: l, label: l });
-    }
-    return out;
-  }, [opts]);
-  const titleOptions = useMemo<DropdownOption[]>(
-    () => (opts?.titles || []).map((t) => ({ value: t, label: t })),
-    [opts]
-  );
 
   useEffect(() => {
     onFiltersChangeRef.current({
@@ -125,8 +106,8 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
   return (
     <div className={`space-y-6 ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold text-fg/40 uppercase tracking-[0.18em]">Refine results</span>
-        <button type="button" onClick={resetAll} className="text-[10px] text-violet-600 dark:text-violet-300 hover:underline">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Refine results</span>
+        <button type="button" onClick={resetAll} className="text-[10px] text-primary hover:underline">
           Reset filters
         </button>
       </div>
@@ -144,12 +125,12 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
               key={m.v} type="button" onClick={() => setMatchMode(m.v)}
               className={`flex flex-col items-start px-3 py-2 rounded-xl border text-left transition-all ${
                 matchMode === m.v
-                  ? "bg-accent text-white border-transparent shadow-[0_0_18px_rgba(139,92,246,0.4)]"
-                  : "bg-fg/[0.04] text-fg/70 border-fg/10 hover:text-fg"
+                  ? "bg-primary text-primary-foreground border-transparent"
+                  : "bg-muted/50 text-foreground border-border hover:border-primary/50 hover:bg-muted"
               }`}
             >
               <span className="text-xs font-bold">{m.label}</span>
-              <span className={`text-[10px] ${matchMode === m.v ? "text-white/80" : "text-fg/45"}`}>{m.hint}</span>
+              <span className={`text-[10px] ${matchMode === m.v ? "text-primary-foreground/80" : "text-muted-foreground"}`}>{m.hint}</span>
             </motion.button>
           ))}
         </div>
@@ -163,8 +144,8 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
       {/* Experience range (min–max) */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[10px] font-semibold text-fg/55 uppercase tracking-[0.18em]">Experience Required</label>
-          <span className="text-xs font-bold text-violet-600 dark:text-violet-300 tabular-nums">
+          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Experience Required</label>
+          <span className="text-xs font-bold text-primary tabular-nums">
             {expMin}{expMax >= 20 ? "+" : `–${expMax}`} yrs
           </span>
         </div>
@@ -199,10 +180,10 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
             <motion.button
               whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
               key={m.label} type="button" onClick={() => setWorkModel(m.value)}
-              className={`px-2 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              className={`px-2 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 workModel === m.value
-                  ? "bg-accent text-white shadow-[0_0_18px_rgba(139,92,246,0.4)]"
-                  : "bg-fg/[0.04] text-fg/60 hover:text-fg/90 border border-fg/8"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
               }`}
             >
               {m.label}
@@ -233,10 +214,10 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
       {/* Career Portals */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <label className="text-[10px] font-semibold text-fg/55 uppercase tracking-[0.18em]">Career Portals</label>
+          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Career Portals</label>
           {portals.length > 0 && (
             <button type="button" onClick={toggleAll}
-              className="text-[10px] text-violet-600 dark:text-violet-300 hover:underline">
+              className="text-[10px] text-primary hover:underline">
               {allSelected ? "Clear all" : "Select all"}
             </button>
           )}
@@ -257,25 +238,25 @@ export default function FilterPanel({ onFiltersChange, disabled }: FilterPanelPr
                 <motion.button
                   whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
                   key={portal.company} type="button" onClick={() => togglePortal(portal.company)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
-                    on ? "bg-fg/[0.06] border-violet-400/40 shadow-[0_0_16px_rgba(139,92,246,0.18)]"
-                       : "bg-fg/[0.02] border-fg/10 hover:bg-fg/[0.04] opacity-70"
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-all ${
+                    on ? "bg-muted/50 border-primary"
+                       : "bg-card border-border hover:bg-muted/30"
                   }`}
                 >
-                  <div className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${on ? "border-violet-400 bg-accent" : "border-fg/25"}`}>
+                  <div className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${on ? "border-primary bg-primary" : "border-border"}`}>
                     {on && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="w-3 h-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-medium text-fg/85 truncate">{portal.company}</p>
+                    <p className="text-sm font-medium text-foreground truncate">{portal.company}</p>
                   </div>
                   <span className={`flex-shrink-0 px-2 py-0.5 rounded text-[9px] font-bold uppercase ${
                     portal.live
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25"
-                      : "bg-fg/8 text-fg/50 border border-fg/10"
+                      ? "bg-secondary text-secondary-foreground"
+                      : "bg-muted text-muted-foreground"
                   }`}>
                     {portal.live ? "Live" : "Curated"}
                   </span>

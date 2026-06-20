@@ -102,7 +102,7 @@ export default function Dropdown({
             setQuery(e.target.value);
             setActive(0);
           }}
-          className="input-glass"
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
@@ -115,13 +115,13 @@ export default function Dropdown({
           aria-haspopup="listbox"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="w-full px-4 py-2.5 bg-fg/[0.04] border border-fg/10 rounded-xl text-sm text-left flex items-center justify-between gap-2 hover:bg-fg/[0.06] focus:outline-none focus:border-violet-400/60 transition-all"
+          className="w-full px-4 py-2.5 bg-card border border-border rounded-md text-sm text-left flex items-center justify-between gap-2 hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring transition-all"
         >
-          <span className={value ? "text-fg/90 truncate" : "text-fg/40 truncate"}>{buttonText}</span>
+          <span className={value ? "text-foreground truncate" : "text-muted-foreground truncate"}>{buttonText}</span>
           <motion.svg
             animate={{ rotate: open ? 180 : 0 }}
             transition={{ duration: 0.2 }}
-            className="w-4 h-4 text-fg/40 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+            className="w-4 h-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </motion.svg>
@@ -137,10 +137,10 @@ export default function Dropdown({
             animate={{ opacity: 1, y: 0, scaleY: 1 }}
             exit={{ opacity: 0, y: -10, scaleY: 0.9 }}
             transition={{ type: "spring", stiffness: 420, damping: 32 }}
-            className="absolute z-40 mt-2 w-full max-h-60 overflow-y-auto glass-popover rounded-xl p-1.5 origin-top"
+            className="absolute z-40 mt-2 w-full max-h-60 overflow-y-auto bg-popover text-popover-foreground border border-border shadow-md rounded-md p-1.5 origin-top"
           >
             {filtered.length === 0 && (
-              <li className="px-3 py-2 text-xs text-fg/40">
+              <li className="px-3 py-2 text-xs text-muted-foreground">
                 {searchable && query ? `Press Enter to use “${query}”` : "No options"}
               </li>
             )}
@@ -157,20 +157,20 @@ export default function Dropdown({
                   initial={{ opacity: 0, x: -6 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.15, delay: Math.min(i * 0.015, 0.2) }}
-                  className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm cursor-pointer transition-colors ${
-                    isActive ? "bg-violet-500/15 text-fg" : "text-fg/70"
+                  className={`flex items-center justify-between gap-2 px-3 py-2 rounded-sm text-sm cursor-pointer transition-colors ${
+                    isActive ? "bg-accent text-accent-foreground" : "text-foreground"
                   }`}
                 >
                   <span className="truncate flex items-center gap-2">
                     {isSel && (
-                      <svg className="w-3.5 h-3.5 text-violet-500 dark:text-violet-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <svg className="w-3.5 h-3.5 text-primary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                     {opt.label}
                   </span>
                   {opt.hint !== undefined && opt.hint !== "" && (
-                    <span className="text-[10px] text-fg/35 tabular-nums shrink-0">{opt.hint}</span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{opt.hint}</span>
                   )}
                 </motion.li>
               );

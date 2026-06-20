@@ -32,7 +32,7 @@ export default function ProcessingState({ status, fileName }: ProcessingStatePro
           animate={!done ? { scale: [1, 1.06, 1] } : { scale: 1 }}
           transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
           className={`w-24 h-24 rounded-3xl flex items-center justify-center border ${
-            done ? "bg-emerald-500/15 border-emerald-400/30" : "bg-violet-500/12 border-violet-400/25 ring-accent"
+            done ? "bg-emerald-500/15 border-emerald-500/30" : "bg-muted border-border"
           }`}
         >
           <motion.svg
@@ -40,13 +40,13 @@ export default function ProcessingState({ status, fileName }: ProcessingStatePro
             initial={{ scale: 0.8, opacity: 0, rotate: -10 }}
             animate={{ scale: 1, opacity: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            className={`w-12 h-12 ${done ? "text-emerald-400" : "text-violet-300"}`}
+            className={`w-12 h-12 ${done ? "text-emerald-500" : "text-foreground"}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={STEPS[currentStep].icon} />
           </motion.svg>
         </motion.div>
-        {!done && <div className="absolute inset-0 rounded-3xl border-2 border-violet-400/30 animate-ping pointer-events-none" />}
+        {!done && <div className="absolute inset-0 rounded-3xl border-2 border-foreground/20 animate-ping pointer-events-none" />}
       </div>
 
       <h3 className="text-lg font-bold text-fg mb-2">{done ? "Resume Processed!" : "Processing Your Resume"}</h3>
@@ -60,7 +60,7 @@ export default function ProcessingState({ status, fileName }: ProcessingStatePro
                 animate={{ scale: i === currentStep ? 1.15 : 1 }}
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-500 ${
                   i < currentStep ? "bg-emerald-500 text-white"
-                  : i === currentStep ? "bg-accent text-white shadow-[0_0_18px_rgba(139,92,246,0.6)]"
+                  : i === currentStep ? "bg-primary text-primary-foreground"
                   : "bg-fg/5 text-fg/25"
                 }`}
               >
@@ -80,7 +80,7 @@ export default function ProcessingState({ status, fileName }: ProcessingStatePro
                   initial={{ width: "0%" }}
                   animate={{ width: i < currentStep ? "100%" : i === currentStep ? "50%" : "0%" }}
                   transition={{ duration: 0.8, ease: "easeInOut" }}
-                  className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-emerald-500 to-violet-500"
+                  className="absolute left-0 top-0 bottom-0 bg-primary"
                 />
               </div>
             )}
