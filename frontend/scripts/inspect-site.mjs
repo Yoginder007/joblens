@@ -7,7 +7,7 @@
  * dark across desktop + mobile, including a primary-button hover frame.
  *
  * Reusable across projects — this is how you "scrape a frontend for inspiration":
- *   node scripts/inspect-site.mjs https://developers.openai.com/ openai
+ *   node scripts/inspect-site.mjs https://example.com mysite
  *
  * Output → frontend/.inspect/<label>/  (report.json + report.md + *.png)
  * Stylesheets are fetched directly (not via sheet.cssRules) to dodge CORS.
@@ -17,7 +17,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-const URL = process.argv[2] || "https://developers.openai.com/";
+const URL = process.argv[2] || "https://example.com/";
 const LABEL = process.argv[3] || "site";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", ".inspect", LABEL);
 

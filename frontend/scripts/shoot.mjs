@@ -1,10 +1,10 @@
 // @ts-check
 /**
- * JobLens screenshot harness — the visual-verification loop (see SKILL.md §4).
+ * JobLens screenshot harness for visual checks across themes + breakpoints.
  *
  * Assumes `npm run dev` is already serving the app (default http://localhost:3000)
  * and, for real data, the backend is up on :8000. Writes PNGs to `frontend/.shots/`
- * which an agent (or you) can open and critique. Captures both themes across
+ * which you can open and review. Captures both themes across
  * mobile / tablet / desktop, plus a few interaction states.
  *
  *   node scripts/shoot.mjs                  # all states, both themes, 3 viewports

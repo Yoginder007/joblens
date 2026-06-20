@@ -35,9 +35,11 @@
 - **Alias-aware skills.** A canonical normalizer means `JS↔JavaScript`,
   `k8s↔Kubernetes`, `postgres↔PostgreSQL` all count as the same skill, with a
   plain-English "why this matched" explanation per result.
-- **Multi-portal ingestion.** Live job data from Greenhouse/Lever/Amazon public
-  APIs + an Adzuna aggregator, normalised behind one schema; every posting keeps
-  a real apply URL.
+- **Multi-source ingestion, cost-tiered.** Live job data from Greenhouse/Lever/
+  Amazon public APIs + the Adzuna aggregator (free, refreshed daily) and
+  LinkedIn/Indeed via Apify pay-per-result actors (refreshed weekly and
+  throttled in-app to bound cost) — all normalised behind one schema; every
+  posting keeps a real apply URL.
 - **Browse + filter.** Faceted search with animated dropdowns, multi-select
   location (incl. whole-country) and company filters, quick experience presets,
   flip pagination, and a job-detail drawer.
@@ -70,8 +72,8 @@ backend/app/
   alembic/     migrations own the Postgres schema
 frontend/src/
   app/         pages, theme, icon
-  components/  dropdowns, job cards, filters, drawer, aurora background
-  lib/         api client · session · motion variants
+  components/  dropdowns, job cards, filters, drawer, theme provider
+  lib/         api client · session · motion variants · hooks
 ```
 
 ## What this project demonstrates
@@ -86,8 +88,10 @@ frontend/src/
   production-secret guard, CORS, bearer-token auth scoping résumé PII, and a
   memory-aware deploy (API-based embeddings — no torch — for free-tier hosting,
   with batched, rate-limit-aware re-embedding via a key-protected endpoint).
-- **Frontend craft:** a cohesive dark/light "aurora" design system on CSS
-  variables, accessible custom comboboxes, and purposeful motion.
+- **Frontend craft:** a cohesive monochrome dark/light design system (shadcn-ui
+  tokens + CSS variables, light by default), real-favicon company avatars,
+  accessible custom comboboxes, live résumé-status streaming (SSE), and
+  purposeful, restrained motion.
 
 ## Run locally (no Docker required)
 

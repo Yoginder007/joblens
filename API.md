@@ -71,6 +71,12 @@ immediately; parsing + embedding happen asynchronously.
 Poll for status: `pending → processing → embedding → ready` (or `failed`).
 When `ready`, includes `parsed_data` (experience, skills, title).
 
+### `GET /api/resumes/{id}/stream`
+Server-Sent Events stream of the résumé's status until it reaches `ready`/`failed`
+— one connection instead of polling. Auth rides as a `?token=` query param (the
+browser `EventSource` API can't set headers); the frontend falls back to polling
+`GET /api/resumes/{id}` if the stream is unavailable.
+
 ---
 
 ## Jobs & search (public)
@@ -154,7 +160,17 @@ against past deliveries, and pushes only the **new** matches.
 Bulk upsert jobs `{ source, jobs[] }` — race-safe on `(source, source_id)`.
 
 ### `POST /api/ingest`  (`X-API-Key`)
-Trigger fetch + upsert for selected (or all) configured companies.
+Trigger fetch + upsert. Body: `{ companies?, tier?, force?, background? }`. With
+`companies` empty, `tier` selects the cost tier — `"free"` (ATS / Adzuna /
+curated), `"paid"` (Apify LinkedIn/Indeed, weekly-guarded), or `"all"`. `force`
+overrides the weekly paid-scrape guard; `background: true` runs it as a task
+(poll `GET /api/ingest/status`).
+
+### Scheduled ops  (`X-API-Key`)
+Driven by the GitHub Actions cron: `POST /api/maintenance/stale` (deactivate jobs
+not re-seen in N days), `POST /api/maintenance/alerts?frequency=` (run alert
+subscriptions), and `POST /api/reembed` (re-embed all vectors after a provider
+switch — background; poll `GET /api/reembed/status`).
 
 ---
 

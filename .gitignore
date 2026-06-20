@@ -39,12 +39,9 @@ frontend/out/
 frontend/build/
 .turbo/
 
-# Screenshot harness + site-inspection output (throwaway visual artifacts)
+# Local screenshot / inspection output (throwaway visual artifacts)
 frontend/.shots/
 frontend/.inspect/
-
-# Local agent tooling (not part of the deployable app)
-.agents/
 
 # Build / dist
 dist/
@@ -56,12 +53,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.log
-
-# Local-only assistant/config notes (not part of the project)
-CLAUDE.md
-AGENTS.md
-**/CLAUDE.md
-**/AGENTS.md
 
 # Keep these (negate): example envs ARE committed
 !.env.example

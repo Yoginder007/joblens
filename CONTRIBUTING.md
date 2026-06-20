@@ -53,9 +53,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the *why*.
 
 **TypeScript / React**
 - Components are typed; API calls go through `lib/api.ts` (single source for the contract).
-- Theming uses CSS variables `--fg` / `--bg`; use `text-fg/xx`, `bg-fg/[x]`,
-  `.glass`, `.bg-accent`. Text on a solid accent uses `on-accent`.
-- Respect `prefers-reduced-motion` for animations.
+- Theming is monochrome (shadcn-ui tokens — `bg-card`, `bg-muted`,
+  `text-foreground`, `border-border`, …) plus legacy `--fg`/`--bg` CSS-variable
+  utilities (`.glass`, `.bg-accent`, `on-accent`). **Light is the default theme.**
+- Keep the company-chip, skill-chips and meta-pill primitives shared (e.g.
+  `CompanyAvatar`) — don't re-roll per-card markup.
+- Respect `prefers-reduced-motion`; reuse the easings in `lib/motion.ts`.
 
 ## Testing & checks (run before every commit)
 

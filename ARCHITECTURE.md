@@ -18,7 +18,7 @@ decisions, trade-offs, and the data flow end to end.
                                               │ HNSW index for ANN search    │
                                               └─────────────────────────────┘
         External job sources ───▶ ingestion ───▶ jobs table (+ embeddings)
-        (Greenhouse · Lever · Amazon · Adzuna)
+        (Greenhouse · Lever · Amazon · Adzuna · LinkedIn/Indeed via Apify)
 ```
 
 Three independently deployable tiers, connected only by HTTP and a database URL.
@@ -89,28 +89,42 @@ backed by a Python cosine fallback.
 ```
 1. POST /api/candidates            → upsert by email, issue one-time bearer token
 2. POST /api/resumes/upload        → stream PDF to disk (size-capped), row=pending
-                                      → Celery task: parse (pdfplumber+regex) → embed → ready
-3. GET  /api/resumes/{id}          → client polls until status=ready
+                                      → task: parse (Gemini/regex) → embed → ready
+3. GET  /api/resumes/{id}/stream   → SSE status until ready (falls back to polling)
 4. GET  /api/jobs/eligible?...     → hard-filter + score + rank (Smart or Direct mode)
 ```
 
 Heavy work (PDF parse, embedding) runs in a **Celery task** so the upload request
-returns immediately (`202 Accepted`). In production on the free tier, Celery runs
-in **eager mode** (in-process) to avoid needing a separate Redis broker; the same
-code runs with a real Redis broker + worker via `docker-compose`.
+returns immediately (`202 Accepted`); the client watches progress over a
+**Server-Sent Events** stream. In production on the free tier, Celery runs in
+**eager mode** (in-process) to avoid a separate Redis broker — but is dispatched
+onto a **worker thread** so the ~15–20 s parse+embed never blocks the single web
+worker's event loop (which would starve health checks and trigger a restart). The
+same code runs with a real Redis broker + worker via `docker-compose`.
 
 ## 5. Ingestion
 
-`app/domains/ingestion/` fetches from multiple sources behind one normalized
-schema. Providers: **Greenhouse** & **Lever** public board APIs, **Amazon**
-search.json (queried per major city for coverage), and the **Adzuna** aggregator
-(thousands of cross-company postings; falls back gracefully when keys are unset).
-Companies without a public API are served from a small **curated** real-posting
-set so the catalogue stays representative.
+`app/domains/ingestion/` fetches from multiple providers behind one normalized
+schema, selected per portal by an `ats` key in a single registry and split into
+two **cost tiers**:
+
+- **Free (refreshed daily):** Greenhouse & Lever public board APIs, Amazon
+  search.json (queried per major city for coverage), the Adzuna aggregator
+  (falls back gracefully when keys are unset), and a small **curated**
+  real-posting set for companies without a public API.
+- **Paid (refreshed weekly):** LinkedIn and Indeed via **Apify** pay-per-result
+  actors. These are throttled in-app — a `scrape_runs` ledger guards them to one
+  run per 7 days (override with `force`) and `APIFY_MAX_ITEMS` caps results
+  billed per run. The GitHub Actions cron drives the free tier nightly and the
+  paid tier weekly.
+
+A flexible field-mapper tolerates the differing JSON shapes the various actors
+return, and a stable `source_id` (provider id, or a hash of the apply URL) means
+re-ingestion upserts rather than duplicates.
 
 Upserts are **race-safe**: on Postgres, `INSERT … ON CONFLICT (source, source_id)
 DO UPDATE` keeps the catalogue idempotent under concurrent ingestion; SQLite uses
-a check-then-write equivalent.
+a check-then-write equivalent — both behind one shared, dialect-aware `upsert()`.
 
 ## 6. Schema ownership & migrations
 
@@ -135,7 +149,7 @@ Postgres concern only.
   scrapers/URL parsing, auth, config, the Gemini embedding provider + LLM
   parser (HTTP mocked), and the maintenance endpoints — run with
   `EMBEDDING_PROVIDER=deterministic` so no network or model download is
-  needed (84 tests).
+  needed (93 tests).
 - **Frontend:** `npm run lint` + `npm run build` (type-checks the whole tree).
 - **CI:** GitHub Actions provisions a pgvector Postgres service and runs
   migrations + tests against the **real** database path.
