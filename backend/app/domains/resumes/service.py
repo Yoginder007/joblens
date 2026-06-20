@@ -64,7 +64,22 @@ class ResumeService:
 
         from app.workers.tasks import process_resume
 
-        process_resume.delay(str(resume.id))
+        # CELERY_TASK_ALWAYS_EAGER (free tier — no worker process) makes .delay()
+        # run the task SYNCHRONOUSLY. Doing that inline in this async endpoint
+        # would block the event loop for the full ~15-20s parse+embed, starving
+        # /api/health on the single uvicorn worker — Render then fails its health
+        # check and restarts the dyno. Run it in a daemon thread so the request
+        # returns 202 immediately and the loop stays responsive; the frontend
+        # polls/streams status meanwhile. With a real broker, .delay() only
+        # enqueues (non-blocking), so dispatch it directly.
+        if settings.CELERY_TASK_ALWAYS_EAGER:
+            import threading
+
+            threading.Thread(
+                target=process_resume.delay, args=(str(resume.id),), daemon=True
+            ).start()
+        else:
+            process_resume.delay(str(resume.id))
         logger.info("Résumé %s queued for processing", resume.id)
         return resume
 
