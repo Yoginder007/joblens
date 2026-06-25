@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
@@ -49,6 +50,11 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Compress JSON responses (job lists carry descriptions + per-match reasoning,
+    # so the search/eligible payloads are the largest thing on the wire). Only
+    # kicks in above ~1KB so tiny responses skip the overhead.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     register_exception_handlers(app)
 

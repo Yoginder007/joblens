@@ -1,15 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { AnimatePresence, motion, MotionConfig } from "framer-motion";
 import AnimatedNumber from "@/components/AnimatedNumber";
 import MatchWizard from "@/components/MatchWizard";
 import RotatingWord from "@/components/RotatingWord";
 import ProcessingState from "@/components/ProcessingState";
-import ResultsDashboard from "@/components/ResultsDashboard";
 import RecentJobsPanel from "@/components/RecentJobsPanel";
 import ThemeToggle from "@/components/ThemeToggle";
-import AuthModal from "@/components/AuthModal";
 import UserMenu from "@/components/UserMenu";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,13 +16,22 @@ import {
   uploadResume,
   streamResumeUntilReady,
   getEligibleJobs,
+  getFilterOptions,
   searchJobs,
   type SearchFilters,
   type EligibleJobsResponse,
 } from "@/lib/api";
+
 import { setSession, patchSession, getToken } from "@/lib/session";
 import { useAuth } from "@/lib/useAuth";
 import { fadeUp, swap } from "@/lib/motion";
+
+// Off the initial-paint critical path: the results dashboard (with its job-card
+// grid + alerts) is only needed after the match runs, and the auth modal only
+// when opened. Loading them as separate async chunks keeps the first render —
+// the Browse tab — lean. Their chunks download during the processing wait.
+const ResultsDashboard = dynamic(() => import("@/components/ResultsDashboard"), { ssr: false });
+const AuthModal = dynamic(() => import("@/components/AuthModal"), { ssr: false });
 
 type Phase = "configure" | "processing" | "results";
 type Tab = "match" | "browse";
@@ -54,6 +62,23 @@ export default function Home() {
     searchJobs({ limit: 1, include_facets: false })
       .then((res) => setBrowseJobCount(res.total))
       .catch(() => setBrowseJobCount(0));
+  }, []);
+
+  // Warm the (cached) filter-option catalogue during idle time so the match
+  // wizard's Preferences step and the browse advanced filters open instantly
+  // rather than waiting on a fetch the moment the user gets there.
+  useEffect(() => {
+    const warm = () => void getFilterOptions().catch(() => {});
+    const ric = (window as Window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    }).requestIdleCallback;
+    if (ric) {
+      const id = ric(warm);
+      return () => (window as Window & { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(id);
+    }
+    const t = setTimeout(warm, 1200);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -111,11 +136,18 @@ export default function Home() {
       patchSession({ resumeId: readyResume.id });
 
       setProcessingStatus("ready");
-      await new Promise((r) => setTimeout(r, 800));
 
+      // Fire the match query immediately and let it run *while* the brief
+      // "Ready!" celebration plays, instead of waiting a fixed 800ms and only
+      // then starting the fetch. Total time becomes max(fetch, ~0.45s) rather
+      // than 0.8s + fetch — usually shaving the better part of a second off the
+      // jump to results.
       const usedFilters = filtersRef.current;
       setResultsFilters(usedFilters);
-      const eligible = await getEligibleJobs(token, readyResume.id, usedFilters);
+      const [eligible] = await Promise.all([
+        getEligibleJobs(token, readyResume.id, usedFilters),
+        new Promise((r) => setTimeout(r, 450)),
+      ]);
       setResults(eligible);
       setPhase("results");
     } catch (err) {

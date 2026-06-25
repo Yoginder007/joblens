@@ -16,6 +16,40 @@ async function parseError(res: Response, fallback: string): Promise<never> {
   throw new Error((err as { detail?: string }).detail || `${fallback} (${res.status})`);
 }
 
+/* ── Client-side GET cache + in-flight dedupe ──────────────────────────────────
+ * Public, idempotent GETs (job search, filter options, boards…) are cached in
+ * memory with a short TTL and deduped while in flight. This is what makes tab
+ * switches feel instant: returning to Browse after the Match flow no longer
+ * re-fetches page 0 + facets, and the filter-option catalogue (requested by both
+ * the match and browse filter UIs) is fetched once and shared. Authenticated /
+ * mutating endpoints deliberately bypass this. */
+interface CacheEntry<T> {
+  value: T;
+  expires: number;
+}
+const _cache = new Map<string, CacheEntry<unknown>>();
+const _inflight = new Map<string, Promise<unknown>>();
+
+async function cachedGet<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const hit = _cache.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expires > now) return hit.value;
+
+  const flying = _inflight.get(key) as Promise<T> | undefined;
+  if (flying) return flying;
+
+  const p = fetcher()
+    .then((value) => {
+      _cache.set(key, { value, expires: Date.now() + ttlMs });
+      return value;
+    })
+    .finally(() => {
+      _inflight.delete(key);
+    });
+  _inflight.set(key, p);
+  return p;
+}
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface Candidate {
@@ -375,9 +409,11 @@ export async function getJobMatches(
 // ── Browse (public) ──────────────────────────────────────────────────────────
 
 export async function getBoards(): Promise<JobBoard[]> {
-  const res = await fetch(`${API_BASE}/api/boards`);
-  if (!res.ok) throw new Error(`Failed to fetch boards (${res.status})`);
-  return res.json();
+  return cachedGet("boards", 300_000, async () => {
+    const res = await fetch(`${API_BASE}/api/boards`);
+    if (!res.ok) throw new Error(`Failed to fetch boards (${res.status})`);
+    return res.json();
+  });
 }
 
 export interface Portal {
@@ -388,9 +424,11 @@ export interface Portal {
 }
 
 export async function getPortals(): Promise<Portal[]> {
-  const res = await fetch(`${API_BASE}/api/portals`);
-  if (!res.ok) throw new Error(`Failed to fetch portals (${res.status})`);
-  return res.json();
+  return cachedGet("portals", 300_000, async () => {
+    const res = await fetch(`${API_BASE}/api/portals`);
+    if (!res.ok) throw new Error(`Failed to fetch portals (${res.status})`);
+    return res.json();
+  });
 }
 
 export interface FilterOptions {
@@ -405,9 +443,13 @@ export interface FilterOptions {
 }
 
 export async function getFilterOptions(): Promise<FilterOptions> {
-  const res = await fetch(`${API_BASE}/api/jobs/options`);
-  if (!res.ok) throw new Error(`Failed to fetch filter options (${res.status})`);
-  return res.json();
+  // The catalogue changes only when ingestion runs, and both the match and
+  // browse filter UIs request it — cache it for several minutes and share it.
+  return cachedGet("filter-options", 300_000, async () => {
+    const res = await fetch(`${API_BASE}/api/jobs/options`);
+    if (!res.ok) throw new Error(`Failed to fetch filter options (${res.status})`);
+    return res.json();
+  });
 }
 
 export async function getRecentJobs(
@@ -419,9 +461,11 @@ export async function getRecentJobs(
   const params = new URLSearchParams({ days: String(days), limit: String(limit) });
   if (source) params.set("source", source);
   if (location) params.set("location", location);
-  const res = await fetch(`${API_BASE}/api/jobs/recent?${params}`);
-  if (!res.ok) throw new Error(`Failed to fetch recent jobs (${res.status})`);
-  return res.json();
+  return cachedGet(`recent:${params}`, 60_000, async () => {
+    const res = await fetch(`${API_BASE}/api/jobs/recent?${params}`);
+    if (!res.ok) throw new Error(`Failed to fetch recent jobs (${res.status})`);
+    return res.json();
+  });
 }
 
 export async function searchJobs(filters: SearchV2Filters): Promise<SearchV2Response> {
@@ -431,9 +475,13 @@ export async function searchJobs(filters: SearchV2Filters): Promise<SearchV2Resp
       params.set(key, Array.isArray(value) ? value.join(",") : String(value));
     }
   }
-  const res = await fetch(`${API_BASE}/api/jobs/search?${params}`);
-  if (!res.ok) await parseError(res, "Failed to search jobs");
-  return res.json();
+  // Short TTL: results stay fresh but identical queries within a browsing
+  // session (esp. paging back/forth and re-entering the Browse tab) are instant.
+  return cachedGet(`search:${params}`, 60_000, async () => {
+    const res = await fetch(`${API_BASE}/api/jobs/search?${params}`);
+    if (!res.ok) await parseError(res, "Failed to search jobs");
+    return res.json();
+  });
 }
 
 // ── Subscriptions / Job Alerts (authenticated) ───────────────────────────────
