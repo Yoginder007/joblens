@@ -94,6 +94,17 @@ def maintenance_alerts(frequency: str = "daily"):
     return run_subscriptions(frequency)
 
 
+@router.post("/maintenance/backfill-roles", dependencies=[Depends(verify_api_key)])
+def maintenance_backfill_roles():
+    """(Re)classify every job's role_category with the current taxonomy and
+    deactivate non-engineering rows (INGEST_TECH_ONLY). Run once after
+    deploying a taxonomy change — the free tier has no shell for the script.
+    """
+    from app.domains.ingestion.service import backfill_roles
+
+    return backfill_roles()
+
+
 @router.post("/reembed", status_code=202, dependencies=[Depends(verify_api_key)])
 def trigger_reembed(background: BackgroundTasks):
     """Regenerate all vectors with the current embedding provider.

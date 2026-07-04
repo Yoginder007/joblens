@@ -185,6 +185,48 @@ def ingest_all(companies: list[str] | None = None, tier: str = "all", force: boo
         db.close()
 
 
+# ── Role backfill (taxonomy migrations) ─────────────────────────────────────
+# (Re)classifies every job with the CURRENT taxonomy rules and, when
+# INGEST_TECH_ONLY is set, deactivates non-engineering rows that predate the
+# ingestion guard. Exposed as an API endpoint because the free hosting tier
+# has no shell; app/scripts/backfill_roles.py wraps it for local/CLI use.
+
+
+def backfill_roles() -> dict:
+    from app.core.config import get_settings
+    from app.core.database import SessionLocal
+    from app.services.roles import classify_role
+
+    tech_only = get_settings().INGEST_TECH_ONLY
+    db = SessionLocal()
+    try:
+        jobs = db.scalars(select(Job)).all()
+        reclassified = deactivated = 0
+        for job in jobs:
+            role = classify_role(job.title)
+            if job.role_category != role:
+                job.role_category = role
+                reclassified += 1
+            if tech_only and role == "Other" and job.is_active:
+                job.is_active = False
+                deactivated += 1
+        db.commit()
+
+        from app.domains.jobs.service import invalidate_options_cache
+
+        invalidate_options_cache()
+        result = {
+            "status": "success",
+            "scanned": len(jobs),
+            "reclassified": reclassified,
+            "deactivated_non_tech": deactivated,
+        }
+        logger.info("Role backfill: %s", result)
+        return result
+    finally:
+        db.close()
+
+
 # ── Re-embedding (provider migrations) ───────────────────────────────────────
 # Regenerates every vector with the CURRENT embedding provider. Needed once
 # after switching providers (e.g. deterministic → gemini): vectors from
