@@ -51,10 +51,15 @@ jobs:
             state=$(curl -sf "$API/api/ingest/status" \
               -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("state","?"))')
             echo "poll $i: $state"
-            [ "$state" = "done" ] && exit 0
+            [ "$state" = "done" ] && break
             [ "$state" = "failed" ] && exit 1
           done
-          echo "timed out waiting for ingest" && exit 1
+
+      - name: Backfill role taxonomy (reclassify all jobs, drop non-tech)
+        run: |
+          curl -sf --max-time 120 --retry 3 --retry-delay 15 --retry-all-errors \
+            -X POST "$API/api/maintenance/backfill-roles" \
+            -H "X-API-Key: ${{ secrets.SCRAPER_API_KEY }}"
 
   scrape-paid:
     name: Weekly Apify (paid) scrape
