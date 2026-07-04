@@ -9,3 +9,7 @@ os.environ.setdefault("ENVIRONMENT", "local")
 os.environ["APIFY_TOKEN"] = ""
 os.environ["ADZUNA_APP_ID"] = ""
 os.environ["ADZUNA_APP_KEY"] = ""
+
+# TestClient sends every request from one fake IP — per-IP limits would 429
+# unrelated tests. The limiter itself is covered by targeted tests.
+os.environ["RATE_LIMIT_ENABLED"] = "false"

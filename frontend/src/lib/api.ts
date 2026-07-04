@@ -29,6 +29,8 @@ interface CacheEntry<T> {
 }
 const _cache = new Map<string, CacheEntry<unknown>>();
 const _inflight = new Map<string, Promise<unknown>>();
+// Bounded: distinct search-param combos accumulate over a long session.
+const _CACHE_MAX_ENTRIES = 80;
 
 async function cachedGet<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
   const now = Date.now();
@@ -40,6 +42,11 @@ async function cachedGet<T>(key: string, ttlMs: number, fetcher: () => Promise<T
 
   const p = fetcher()
     .then((value) => {
+      if (_cache.size >= _CACHE_MAX_ENTRIES) {
+        // Map preserves insertion order — drop the oldest entry.
+        const oldest = _cache.keys().next().value;
+        if (oldest !== undefined) _cache.delete(oldest);
+      }
       _cache.set(key, { value, expires: Date.now() + ttlMs });
       return value;
     })
@@ -48,6 +55,34 @@ async function cachedGet<T>(key: string, ttlMs: number, fetcher: () => Promise<T
     });
   _inflight.set(key, p);
   return p;
+}
+
+/* ── Cold-start-aware fetch for public GETs ────────────────────────────────────
+ * The free-tier backend sleeps when idle; the first requests of a session hit
+ * a server that's still booting (network errors / 502-504 from the proxy).
+ * Retrying idempotent GETs with backoff means content pops in by itself the
+ * moment the backend wakes — no manual refresh. Mutating/authenticated calls
+ * deliberately do NOT retry (they run after the app is interactive). */
+const _RETRYABLE_STATUS = new Set([502, 503, 504]);
+
+async function publicFetch(url: string, retryForMs = 90_000): Promise<Response> {
+  const deadline = Date.now() + retryForMs;
+  let delay = 1_500;
+  for (;;) {
+    let res: Response | null = null;
+    try {
+      res = await fetch(url);
+    } catch {
+      res = null; // network error — offline or cold start
+    }
+    if (res && !_RETRYABLE_STATUS.has(res.status)) return res;
+    if (Date.now() + delay >= deadline) {
+      if (res) return res;
+      throw new Error("Server unreachable — it may still be waking up. Please retry in a moment.");
+    }
+    await new Promise((r) => setTimeout(r, delay));
+    delay = Math.min(delay * 1.7, 8_000);
+  }
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -121,6 +156,7 @@ export interface EligibleJob {
   work_model: string | null;
   industry: string | null;
   job_type: string | null;
+  role_category: string | null;
 }
 
 export interface EligibleJobsResponse {
@@ -159,6 +195,7 @@ export interface SearchFilters {
   max_experience?: number;
   work_model?: string;
   job_type?: string;
+  roles?: string[];
   posted_within_days?: number;
   sources?: string[];
   match_mode?: "semantic" | "direct";
@@ -171,6 +208,7 @@ export interface FacetCounts {
   job_types: Record<string, number>;
   posted_within: Record<string, number>;
   sources: Record<string, number>;
+  roles: Record<string, number>;
 }
 
 export interface RecentJob {
@@ -195,6 +233,7 @@ export interface RecentJob {
   company_rating?: number | null;
   company_size?: string | null;
   job_type?: string | null;
+  role_category?: string | null;
 }
 
 export interface SearchV2Response {
@@ -214,6 +253,7 @@ export interface SearchV2Filters {
   posted_within_days?: number;
   industry?: string;
   job_type?: string;
+  roles?: string[];
   sources?: string[];
   companies?: string[];
   sort_by?: "relevance" | "date" | "salary";
@@ -314,7 +354,9 @@ export async function pollResumeUntilReady(
   token: string,
   resumeId: string,
   onProgress?: (status: string) => void,
-  maxAttempts = 40
+  // Matches the backend's ~3 min processing window (slow LLM parses on the
+  // free tier must not be reported as failures at 40s).
+  maxAttempts = 180
 ): Promise<ResumeDetail> {
   for (let i = 0; i < maxAttempts; i++) {
     const detail = await getResumeStatus(token, resumeId);
@@ -382,6 +424,7 @@ export async function getEligibleJobs(
   if (filters.max_experience !== undefined) params.set("max_experience", String(filters.max_experience));
   if (filters.work_model) params.set("work_model", filters.work_model);
   if (filters.job_type) params.set("job_type", filters.job_type);
+  if (filters.roles?.length) params.set("roles", filters.roles.join(","));
   if (filters.posted_within_days !== undefined) params.set("posted_within_days", String(filters.posted_within_days));
   if (filters.sources?.length) params.set("sources", filters.sources.join(","));
   if (filters.match_mode) params.set("match_mode", filters.match_mode);
@@ -410,7 +453,7 @@ export async function getJobMatches(
 
 export async function getBoards(): Promise<JobBoard[]> {
   return cachedGet("boards", 300_000, async () => {
-    const res = await fetch(`${API_BASE}/api/boards`);
+    const res = await publicFetch(`${API_BASE}/api/boards`);
     if (!res.ok) throw new Error(`Failed to fetch boards (${res.status})`);
     return res.json();
   });
@@ -421,11 +464,12 @@ export interface Portal {
   careers_url: string;
   live: boolean;
   ats: string;
+  group: "india" | "global" | "aggregator";
 }
 
 export async function getPortals(): Promise<Portal[]> {
   return cachedGet("portals", 300_000, async () => {
-    const res = await fetch(`${API_BASE}/api/portals`);
+    const res = await publicFetch(`${API_BASE}/api/portals`);
     if (!res.ok) throw new Error(`Failed to fetch portals (${res.status})`);
     return res.json();
   });
@@ -440,30 +484,15 @@ export interface FilterOptions {
   sources: string[];
   work_models: string[];
   job_types: string[];
+  roles: string[];
 }
 
 export async function getFilterOptions(): Promise<FilterOptions> {
   // The catalogue changes only when ingestion runs, and both the match and
   // browse filter UIs request it — cache it for several minutes and share it.
   return cachedGet("filter-options", 300_000, async () => {
-    const res = await fetch(`${API_BASE}/api/jobs/options`);
+    const res = await publicFetch(`${API_BASE}/api/jobs/options`);
     if (!res.ok) throw new Error(`Failed to fetch filter options (${res.status})`);
-    return res.json();
-  });
-}
-
-export async function getRecentJobs(
-  days = 60,
-  source?: string,
-  location?: string,
-  limit = 100
-): Promise<RecentJob[]> {
-  const params = new URLSearchParams({ days: String(days), limit: String(limit) });
-  if (source) params.set("source", source);
-  if (location) params.set("location", location);
-  return cachedGet(`recent:${params}`, 60_000, async () => {
-    const res = await fetch(`${API_BASE}/api/jobs/recent?${params}`);
-    if (!res.ok) throw new Error(`Failed to fetch recent jobs (${res.status})`);
     return res.json();
   });
 }
@@ -478,7 +507,7 @@ export async function searchJobs(filters: SearchV2Filters): Promise<SearchV2Resp
   // Short TTL: results stay fresh but identical queries within a browsing
   // session (esp. paging back/forth and re-entering the Browse tab) are instant.
   return cachedGet(`search:${params}`, 60_000, async () => {
-    const res = await fetch(`${API_BASE}/api/jobs/search?${params}`);
+    const res = await publicFetch(`${API_BASE}/api/jobs/search?${params}`);
     if (!res.ok) await parseError(res, "Failed to search jobs");
     return res.json();
   });

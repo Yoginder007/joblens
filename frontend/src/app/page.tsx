@@ -24,6 +24,8 @@ import {
 
 import { setSession, patchSession, getToken } from "@/lib/session";
 import { useAuth } from "@/lib/useAuth";
+import { useBackendStatus } from "@/lib/useBackendStatus";
+import BackendWakingScreen from "@/components/BackendWakingScreen";
 import { fadeUp, swap } from "@/lib/motion";
 
 // Off the initial-paint critical path: the results dashboard (with its job-card
@@ -55,6 +57,11 @@ export default function Home() {
 
   const auth = useAuth();
   const { authed, acctEmail, acctName, authOpen, authMode, openAuth } = auth;
+
+  // Free-tier cold starts: swap the tab content for an animated waking screen
+  // until /api/health answers; data fetches retry independently (lib/api.ts).
+  const { status: backendStatus, sinceMs: backendSince } = useBackendStatus();
+  const backendBlocked = backendStatus === "waking" || backendStatus === "down";
 
   const filtersRef = useRef<SearchFilters>({});
 
@@ -118,8 +125,7 @@ export default function Home() {
 
     try {
       let token = getToken();
-      if (authed && token) {
-      } else {
+      if (!authed || !token) {
         const candidate = await createCandidate(email, fullName);
         token = candidate.access_token;
         setSession({ token, candidateId: candidate.id, email, fullName });
@@ -204,7 +210,9 @@ export default function Home() {
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => { setActiveTab(t.id); handleReset(); }}
+                    // No reset here: peeking at Browse must not destroy match
+                    // results — "New Search" is the explicit reset.
+                    onClick={() => setActiveTab(t.id)}
                     className={`relative px-4 py-1.5 rounded-md text-sm font-medium transition-colors z-10 flex items-center gap-2 ${
                       activeTab === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                     }`}
@@ -293,6 +301,9 @@ export default function Home() {
 
         {/* ── Main ── */}
         <main className="relative z-10 max-w-6xl mx-auto px-6 py-12">
+          {backendBlocked ? (
+            <BackendWakingScreen status={backendStatus} sinceMs={backendSince} />
+          ) : (
           <AnimatePresence mode="wait">
             {/* ─── Browse ─── */}
             {activeTab === "browse" && (
@@ -373,6 +384,7 @@ export default function Home() {
               </motion.div>
             )}
           </AnimatePresence>
+          )}
         </main>
 
         {/* ── Footer ── */}

@@ -7,6 +7,7 @@ simple check-then-write is used — there is no concurrent writer to race with.
 """
 import logging
 import time
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -14,17 +15,20 @@ from sqlalchemy.orm import Session
 from app.core.upsert import upsert
 from app.domains.jobs.models import Job
 from app.domains.jobs.schemas import JobCreate
+from app.services.roles import classify_role
 
 logger = logging.getLogger(__name__)
 
 # Columns refreshed when a job is re-ingested. Includes job_url so a posting
-# whose link changes (or was seeded without one) gets corrected on re-sync.
-# source/source_id are the identity and are never updated.
+# whose link changes (or was seeded without one) gets corrected on re-sync,
+# and last_seen_at so freshness/staleness track "still live in the feed",
+# not "first scraped". source/source_id are the identity and are never updated.
 _UPDATE_KEYS = (
     "title", "description", "technical_skills", "location",
     "work_model", "is_remote", "job_type", "is_active",
     "required_experience_years", "job_url", "salary_min", "salary_max",
     "industry", "company_rating", "company_size",
+    "role_category", "last_seen_at",
 )
 
 
@@ -37,6 +41,7 @@ class IngestionService:
         inserted = updated = 0
         new_ids: list[str] = []
 
+        now = datetime.now(timezone.utc)
         for j in jobs:
             values = dict(
                 title=j.title, company=j.company, description=j.description,
@@ -46,7 +51,10 @@ class IngestionService:
                 source=source, source_id=j.source_id,
                 work_model=j.work_model or "on-site", industry=j.industry,
                 company_rating=j.company_rating, company_size=j.company_size,
-                job_type=j.job_type or "full-time", is_remote=j.is_remote,
+                # job_type stays as reported (None = unknown, not fabricated).
+                job_type=j.job_type, is_remote=j.is_remote,
+                role_category=j.role_category or classify_role(j.title),
+                last_seen_at=now,
                 is_active=True,
             )
             job_id, was_inserted = upsert(
@@ -62,6 +70,11 @@ class IngestionService:
                 updated += 1
 
         self.db.commit()
+
+        # The option catalogue (dropdown values) may have changed.
+        from app.domains.jobs.service import invalidate_options_cache
+
+        invalidate_options_cache()
 
         if new_ids:
             from app.workers.tasks import generate_job_embedding

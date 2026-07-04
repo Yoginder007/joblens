@@ -76,12 +76,30 @@ def test_extract_skills_avoids_substring_false_positives():
 def test_available_portals_shape():
     portals = available_portals()
     names = {p["company"] for p in portals}
-    # All user-provided companies are represented.
-    assert {"Postman", "CRED", "Amazon", "Uber", "Razorpay", "Goldman Sachs", "Visa"} <= names
-    # Curated companies are marked non-live and still carry a careers URL.
+    # Core portals are represented, including the Indian live boards.
+    assert {"Postman", "CRED", "Amazon", "Uber", "Goldman Sachs", "Visa"} <= names
+    assert {"PhonePe", "Paytm", "Meesho", "Razorpay", "Groww"} <= names
+    # Razorpay upgraded from curated to a live Greenhouse board.
     razorpay = next(p for p in portals if p["company"] == "Razorpay")
-    assert razorpay["live"] is False
+    assert razorpay["live"] is True
     assert razorpay["careers_url"].startswith("http")
+    # Every portal carries a UI group bucket.
+    assert {p["group"] for p in portals} <= {"india", "global", "aggregator"}
+    assert next(p for p in portals if p["company"] == "PhonePe")["group"] == "india"
+
+
+def test_extract_experience_years_prefers_context_max():
+    from app.domains.ingestion.scrapers import extract_experience_years
+
+    # Context mentions win, and the MAX of them is the requirement.
+    assert extract_experience_years(
+        "8+ years of experience building services; 2 years with React experience"
+    ) == 8
+    assert extract_experience_years("3+ years of backend experience") == 3
+    # No context mention → conservative min of generic figures.
+    assert extract_experience_years("ships in 2 years, roadmap spans 5 years") == 2
+    assert extract_experience_years("") == 0
+    assert extract_experience_years("no numbers here") == 0
 
 
 def test_curated_company_returns_real_posting():
@@ -92,3 +110,18 @@ def test_curated_company_returns_real_posting():
     assert j["company"] == "Goldman Sachs"
     assert j["job_url"].startswith("http")
     assert j["technical_skills"]
+    assert j["role_category"]  # tagged at normalization
+
+
+def test_normalize_drops_non_tech_when_tech_only():
+    from app.domains.ingestion.scrapers import _normalize
+
+    sales = {"title": "Mid-Market Account Executive", "location": "Bengaluru, India",
+             "job_url": "https://example.com/jobs/1", "source_id": "X-1"}
+    eng = {"title": "Senior Backend Engineer", "location": "Bengaluru, India",
+           "job_url": "https://example.com/jobs/2", "source_id": "X-2"}
+    # INGEST_TECH_ONLY defaults to True.
+    assert _normalize("Acme", dict(sales), require_real_url=False) is None
+    normalized = _normalize("Acme", dict(eng), require_real_url=False)
+    assert normalized is not None
+    assert normalized["role_category"] == "Backend"

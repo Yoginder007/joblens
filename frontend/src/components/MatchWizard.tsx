@@ -61,6 +61,7 @@ export default function MatchWizard({
 
   const summaryChips: string[] = [
     summary.match_mode === "direct" ? "Direct Filter" : "Smart Match",
+    ...(summary.roles ?? []),
     ...(summary.location ? [summary.location] : []),
     ...(summary.title_keyword ? [summary.title_keyword] : []),
     ...(summary.experience_min !== undefined || summary.max_experience !== undefined

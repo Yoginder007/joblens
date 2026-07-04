@@ -51,15 +51,32 @@ def _extract_experience_years(text: str) -> int:
         if matches:
             return max(int(m) for m in matches)
 
+    # No explicit statement — estimate from employment date ranges. Overlapping
+    # ranges are MERGED before summing so two parallel roles ("2020–2023" at a
+    # job + "2021–2022" freelancing) don't double-count the same years.
+    from datetime import datetime, timezone
+
+    this_year = datetime.now(timezone.utc).year
     year_ranges = re.findall(r"(20\d{2})\s*[-–—]\s*(20\d{2}|present|current|now)", text_lower)
-    if year_ranges:
-        total = 0
-        for start, end in year_ranges:
-            end_year = 2026 if end in ("present", "current", "now") else int(end)
-            total += max(0, end_year - int(start))
+    intervals: list[tuple[int, int]] = []
+    for start, end in year_ranges:
+        end_year = this_year if end in ("present", "current", "now") else int(end)
+        if end_year >= int(start):
+            intervals.append((int(start), end_year))
+    if intervals:
+        intervals.sort()
+        merged: list[list[int]] = [list(intervals[0])]
+        for s, e in intervals[1:]:
+            if s <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], e)
+            else:
+                merged.append([s, e])
+        total = sum(e - s for s, e in merged)
         if total > 0:
             return min(total, 30)
-    return 2
+    # Nothing found → 0 (a fresher résumé must not get phantom years, which
+    # would loosen the eligibility hard filter).
+    return 0
 
 
 def _extract_skills(text: str) -> list[dict]:

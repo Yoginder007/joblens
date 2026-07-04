@@ -136,6 +136,11 @@ def calculate_match(
             result.match_score = 70.0 + 0.30 * result.skill_match_percentage
         else:
             result.match_score = 85.0  # filters pass, no skills to compare on
+    elif not job_canon:
+        # No skills listed → the skill axis carries no information. Score on
+        # semantics alone instead of blending in a vacuous 100%, which would
+        # rank skill-less postings above genuine partial-skill matches.
+        result.match_score = result.semantic_similarity
     else:
         result.match_score = (
             result.semantic_similarity * settings.SEMANTIC_WEIGHT
@@ -253,13 +258,27 @@ class MatchingService:
         self, resume: Resume, filters: JobFilters, limit: int, match_mode: str = "semantic"
     ) -> EligibleJobsResponse:
         candidate_exp = self._candidate_exp(resume)
-        jobs = self.jobs.eligible(candidate_exp, filters, limit)
+
+        # Semantic mode retrieves by vector nearness (ANN on Postgres) so the
+        # candidate pool is the most RELEVANT eligible jobs, not merely the
+        # newest — recency-limited retrieval silently drops strong matches once
+        # the catalogue outgrows ``limit``. Direct mode (and résumés without an
+        # embedding) keep the deterministic newest-first pool.
+        pairs: list[tuple] = []
+        if match_mode == "semantic" and _has_vector(resume.embedding):
+            pairs = [
+                (job, 1.0 - dist)
+                for job, dist in self.jobs.nearest(resume.embedding, candidate_exp, filters, limit)
+            ]
+        if not pairs:  # direct mode, no embedding yet, or no embedded jobs
+            pairs = [(job, None) for job in self.jobs.eligible(candidate_exp, filters, limit)]
+
         out: list[EligibleJobSummary] = []
-        for job in jobs:
+        for job, cos in pairs:
             res = calculate_match(
                 resume.parsed_data or {}, job.title, job.technical_skills or [],
                 job.required_experience_years or 0, resume.embedding, job.embedding,
-                match_mode=match_mode,
+                cosine_sim=cos, match_mode=match_mode,
             )
             out.append(EligibleJobSummary(
                 job_id=job.id, title=job.title, company=job.company, location=job.location,
@@ -271,6 +290,7 @@ class MatchingService:
                 skill_match_percentage=res.skill_match_percentage,
                 matched_skills=_to_skill_details(res.matched_skills),
                 work_model=job.work_model, industry=job.industry, job_type=job.job_type,
+                role_category=job.role_category,
             ))
         out.sort(key=lambda j: j.match_score, reverse=True)
         return EligibleJobsResponse(

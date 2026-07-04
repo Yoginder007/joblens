@@ -8,12 +8,15 @@ pushes only the *new* matches over the configured channel.
 from __future__ import annotations
 
 import html
+import ipaddress
 import logging
+import socket
+from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from app.services.email import send_email
 from app.domains.candidates.models import Candidate
 from app.domains.jobs.repository import JobFilters
@@ -25,6 +28,31 @@ from app.domains.subscriptions.schemas import SubscriptionCreate
 
 logger = logging.getLogger(__name__)
 _ALERT_LIMIT = 50
+
+
+def _webhook_url_error(url: str) -> str | None:
+    """SSRF guard for user-supplied webhook destinations: the server POSTs to
+    this URL, so it must never be allowed to reach loopback/private/link-local
+    addresses (cloud metadata, internal services). Returns a reason or None."""
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return "invalid URL"
+    if parsed.scheme not in ("http", "https"):
+        return "URL must use http or https"
+    host = parsed.hostname
+    if not host:
+        return "URL has no host"
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return "host does not resolve"
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return "host resolves to a private/internal address"
+    return None
 
 
 def _filters_from(stored: dict) -> JobFilters:
@@ -75,6 +103,10 @@ class SubscriptionService:
         destination = payload.destination
         if payload.channel == "email" and not destination:
             destination = candidate.email
+        if payload.channel == "webhook" and destination:
+            reason = _webhook_url_error(destination)
+            if reason:
+                raise ValidationError(f"Webhook destination rejected: {reason}")
 
         sub = Subscription(
             candidate_id=candidate.id,
@@ -142,6 +174,10 @@ class SubscriptionService:
             if sub.channel == "webhook":
                 if not sub.destination:
                     return "skipped", "no webhook destination"
+                # Re-check at send time too — DNS can change after creation.
+                reason = _webhook_url_error(sub.destination)
+                if reason:
+                    return "skipped", f"webhook destination rejected: {reason}"
                 payload = {
                     "subscription_id": str(sub.id),
                     "matches": [

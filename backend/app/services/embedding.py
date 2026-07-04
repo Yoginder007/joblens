@@ -107,9 +107,14 @@ def embed_text(text: str, task: str = TASK_DOCUMENT) -> list[float]:
 
 def embed_texts(texts: list[str], task: str = TASK_DOCUMENT) -> list[list[float]]:
     """Batch embedding. On Gemini this uses ``batchEmbedContents`` (one HTTP
-    call per ``GEMINI_BATCH_SIZE`` texts); other providers map over
-    ``embed_text``. Order is preserved."""
+    call per ``GEMINI_BATCH_SIZE`` texts); sentence-transformers encodes the
+    whole list natively (dramatically faster than per-text calls for
+    re-embeds); the deterministic provider maps over ``embed_text``.
+    Order is preserved."""
     settings = get_settings()
+    if settings.EMBEDDING_PROVIDER == "sentence-transformers":
+        vecs = _get_model().encode([_clean(t) for t in texts], show_progress_bar=False)
+        return [_normalize(np.asarray(v, dtype=np.float32)).tolist() for v in vecs]
     if settings.EMBEDDING_PROVIDER != "gemini":
         return [embed_text(t, task) for t in texts]
 

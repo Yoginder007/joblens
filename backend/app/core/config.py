@@ -75,16 +75,31 @@ class Settings(BaseSettings):
     # Auto-skipped in local/deterministic dev (see scrapers.is_valid_job_url).
     VERIFY_JOB_URLS: bool = True
 
+    # JobLens is an IT/software product: drop postings whose title classifies
+    # as non-engineering ("Other" in services/roles.py) at ingestion. Company
+    # ATS boards list sales/legal/HR roles that are pure noise here.
+    INGEST_TECH_ONLY: bool = True
+
     # Adzuna job aggregator (free tier). When both are set, the "Adzuna"
     # aggregator portal fetches thousands of real, cross-company jobs.
     # Get keys at https://developer.adzuna.com/ ; leave blank to disable.
     ADZUNA_APP_ID: str = ""
     ADZUNA_APP_KEY: str = ""
     ADZUNA_COUNTRY: str = "in"  # ISO country for the Adzuna endpoint
+    # Big Indian employers with no public ATS API — their postings are pulled
+    # via Adzuna company-targeted queries instead (comma-separated).
+    ADZUNA_TARGET_COMPANIES: str = (
+        "Flipkart,Myntra,Swiggy,Zomato,Zepto,Ola,Paytm,Lenskart,Nykaa,"
+        "Zoho,Freshworks,ShareChat,Urban Company,BigBasket"
+    )
 
     @property
     def adzuna_enabled(self) -> bool:
         return bool(self.ADZUNA_APP_ID and self.ADZUNA_APP_KEY)
+
+    @property
+    def adzuna_target_companies(self) -> list[str]:
+        return [c.strip() for c in self.ADZUNA_TARGET_COMPANIES.split(",") if c.strip()]
 
     # Apify marketplace scrapers — real LinkedIn + Indeed postings (pay-per-use).
     # One run-token enables every Apify portal; leave blank to disable them all.
@@ -122,6 +137,9 @@ class Settings(BaseSettings):
 
     # ── Security ─────────────────────────────────────────────────────────
     SCRAPER_API_KEY: str = "change-me-in-production"
+    # Per-IP fixed-window limits on auth + upload endpoints (core/ratelimit.py).
+    # Tests disable this — TestClient sends everything from one fake IP.
+    RATE_LIMIT_ENABLED: bool = True
 
     # ── CORS ─────────────────────────────────────────────────────────────
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"

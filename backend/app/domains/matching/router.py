@@ -56,6 +56,7 @@ def get_eligible(
     max_experience: int | None = Query(None, ge=0),
     work_model: str | None = None,
     job_type: str | None = None,
+    roles: str | None = None,
     posted_within_days: int | None = Query(None, ge=1, le=365),
     sources: str | None = None,
     match_mode: str = Query("semantic", pattern="^(semantic|direct)$"),
@@ -76,6 +77,7 @@ def get_eligible(
         experience_max=max_experience,
         work_model=work_model,
         job_type=job_type,
+        role_categories=_csv(roles),
         posted_within_days=posted_within_days,
         sources=_csv(sources),
     )

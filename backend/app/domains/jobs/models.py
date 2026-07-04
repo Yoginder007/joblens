@@ -45,10 +45,20 @@ class Job(Base):
     industry: Mapped[str | None] = mapped_column(String(100))
     company_rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))
     company_size: Mapped[str | None] = mapped_column(String(50))
-    job_type: Mapped[str] = mapped_column(String(30), default="full-time")
+    # Nullable on purpose: only set when the source actually reports it —
+    # a NULL means "unknown", never a fabricated default.
+    job_type: Mapped[str | None] = mapped_column(String(30))
+    # Taxonomy bucket derived from the title at ingestion (services/roles.py).
+    role_category: Mapped[str | None] = mapped_column(String(40))
 
     posted_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # First time we saw the posting…
     scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # …and the most recent scrape that still returned it. Freshness filters and
+    # stale deactivation key off this (refreshed on every re-ingest upsert).
+    last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -70,6 +80,8 @@ class Job(Base):
         Index("idx_job_work_model", "work_model"),
         Index("idx_job_industry", "industry"),
         Index("idx_job_type", "job_type"),
+        Index("idx_job_role_category", "role_category"),
+        Index("idx_job_last_seen", "last_seen_at"),
     )
 
 

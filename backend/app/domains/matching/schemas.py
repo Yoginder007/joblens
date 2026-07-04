@@ -53,6 +53,7 @@ class EligibleJobSummary(BaseModel):
     work_model: str | None = None
     industry: str | None = None
     job_type: str | None = None
+    role_category: str | None = None
 
 
 class EligibleJobsResponse(BaseModel):

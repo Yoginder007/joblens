@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { type SearchV2Filters, type FacetCounts } from "@/lib/api";
 import Dropdown, { type DropdownOption } from "./Dropdown";
+import FilterPills, { type Pill } from "./FilterPills";
 import MultiDropdown from "./MultiDropdown";
 import { useFilterOptions } from "@/lib/useFilterOptions";
 
@@ -51,7 +52,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
   const [q, setQ] = useState("");
   const [locations, setLocations] = useState<string[]>([]);
   const [workModel, setWorkModel] = useState("");
-  const [industry, setIndustry] = useState("");
+  const [roles, setRoles] = useState<string[]>([]);
   const [jobType, setJobType] = useState("");
   const [postedWithin, setPostedWithin] = useState("");
   const [companies, setCompanies] = useState<string[]>([]);
@@ -76,7 +77,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
         q: q || undefined,
         location: locations.length ? locations.join(",") : undefined,
         work_model: workModel || undefined,
-        industry: industry || undefined,
+        roles: roles.length ? roles : undefined,
         job_type: jobType || undefined,
         posted_within_days: postedWithin ? parseInt(postedWithin, 10) : undefined,
         companies: companies.length ? companies : undefined,
@@ -86,7 +87,7 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
       });
     }, 400);
     return () => clearTimeout(timeout);
-  }, [q, locations, workModel, industry, jobType, postedWithin, companies, sortBy, activePreset, onFiltersChange]);
+  }, [q, locations, workModel, roles, jobType, postedWithin, companies, sortBy, activePreset, onFiltersChange]);
 
   const workModelOptions = useMemo<DropdownOption[]>(() => {
     const vals = opts?.work_models?.length ? opts.work_models : ["remote", "hybrid", "on-site"];
@@ -102,13 +103,6 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
       ...vals.map((v) => ({ value: v, label: JOB_TYPE_LABEL[v] ?? v, hint: facets?.job_types?.[v] ?? "" })),
     ];
   }, [opts, facets]);
-  const industryOptions = useMemo<DropdownOption[]>(
-    () => [
-      { value: "", label: "All industries" },
-      ...(opts?.industries || []).map((i) => ({ value: i, label: i, hint: facets?.industries?.[i] ?? "" })),
-    ],
-    [opts, facets]
-  );
   const dateOptions = useMemo<DropdownOption[]>(
     () => DATE_OPTIONS.map((d) => ({
       ...d,
@@ -125,14 +119,39 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
   const labelCls = "block text-[10px] font-semibold text-fg/55 uppercase tracking-[0.18em] mb-2";
 
   const clearAll = () => {
-    setQ(""); setLocations([]); setWorkModel(""); setIndustry(""); setJobType("");
+    setQ(""); setLocations([]); setWorkModel(""); setRoles([]); setJobType("");
     setPostedWithin(""); setCompanies([]); setSortBy("date"); setPreset("");
   };
 
   // Shown as a badge on the collapsed header so active filters stay visible.
   const activeCount =
-    [q, workModel, industry, jobType, postedWithin, preset].filter(Boolean).length +
-    locations.length + companies.length;
+    [q, workModel, jobType, postedWithin, preset].filter(Boolean).length +
+    roles.length + locations.length + companies.length;
+
+  const toggleRole = (role: string) =>
+    setRoles((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
+
+  // Active-filter pills (shared component with the match wizard).
+  const pills: Pill[] = [
+    ...roles.map((r) => ({ key: `role:${r}`, label: r })),
+    ...locations.map((l) => ({ key: `loc:${l}`, label: l })),
+    ...companies.map((c) => ({ key: `co:${c}`, label: c })),
+    ...(q ? [{ key: "q", label: `“${q}”` }] : []),
+    ...(preset ? [{ key: "exp", label: EXPERIENCE_PRESETS.find((p) => p.id === preset)?.label ?? "" }] : []),
+    ...(workModel ? [{ key: "work", label: WORK_MODEL_LABEL[workModel] ?? workModel }] : []),
+    ...(jobType ? [{ key: "type", label: JOB_TYPE_LABEL[jobType] ?? jobType }] : []),
+    ...(postedWithin ? [{ key: "date", label: DATE_OPTIONS.find((d) => d.value === postedWithin)?.label ?? "" }] : []),
+  ];
+  const removePill = (key: string) => {
+    if (key.startsWith("role:")) toggleRole(key.slice(5));
+    else if (key.startsWith("loc:")) setLocations((prev) => prev.filter((l) => l !== key.slice(4)));
+    else if (key.startsWith("co:")) setCompanies((prev) => prev.filter((c) => c !== key.slice(3)));
+    else if (key === "q") setQ("");
+    else if (key === "exp") setPreset("");
+    else if (key === "work") setWorkModel("");
+    else if (key === "type") setJobType("");
+    else if (key === "date") setPostedWithin("");
+  };
 
   return (
     <motion.div
@@ -197,6 +216,13 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
             className={settled ? "overflow-visible" : "overflow-hidden"}
           >
             <div className="pt-6">
+      {/* Active filters — always visible, individually removable */}
+      {pills.length > 0 && (
+        <div className="mb-5">
+          <FilterPills pills={pills} onRemove={removePill} onClear={clearAll} />
+        </div>
+      )}
+
       {/* Location — the primary filter, spans full width */}
       <div className="mb-5">
         <label className={labelCls}>
@@ -218,6 +244,40 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
           disabled={disabled} placeholder="e.g. Microsoft, Google, Amazon…" ariaLabel="Companies"
         />
       </div>
+
+      {/* Role category — software-engineering taxonomy with live counts */}
+      {(opts?.roles?.length ?? 0) > 0 && (
+        <div className="mb-5">
+          <label className={labelCls}>
+            Role <span className="text-fg/30 normal-case tracking-normal">· pick any that fit</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {(opts?.roles ?? []).map((role) => {
+              const on = roles.includes(role);
+              const count = facets?.roles?.[role];
+              return (
+                <motion.button
+                  key={role} type="button" disabled={disabled}
+                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => toggleRole(role)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
+                    on
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-fg/[0.05] text-fg/70 hover:text-fg border border-fg/10"
+                  }`}
+                >
+                  {role}
+                  {count !== undefined && (
+                    <span className={`tabular-nums text-[10px] ${on ? "text-primary-foreground/75" : "text-fg/40"}`}>
+                      {count}
+                    </span>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Quick experience presets — one click, no detail needed */}
       <div className="mb-5">
@@ -256,10 +316,6 @@ export default function AdvancedSearchPanel({ onFiltersChange, disabled, facets,
         <div>
           <label className={labelCls}>Job Type</label>
           <Dropdown value={jobType} onChange={setJobType} options={jobTypeOptions} disabled={disabled} ariaLabel="Job type" />
-        </div>
-        <div>
-          <label className={labelCls}>Industry</label>
-          <Dropdown value={industry} onChange={setIndustry} options={industryOptions} searchable disabled={disabled} placeholder="All industries" ariaLabel="Industry" />
         </div>
         <div>
           <label className={labelCls}>Date Posted</label>

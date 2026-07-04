@@ -41,7 +41,10 @@ export default function RecentJobsPanel() {
   const [facets, setFacets] = useState<FacetCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<SearchV2Filters>({});
+  // Initialised with the panel's own defaults so the mount-time fetch and the
+  // panel's first (debounced) emit produce the SAME cache key — one request,
+  // not two, for page 0.
+  const [filters, setFilters] = useState<SearchV2Filters>({ sort_by: "date" });
   const [page, setPage] = useState(0);
   const [dir, setDir] = useState(1); // 1 = forward, -1 = back (drives flip direction)
   const [selected, setSelected] = useState<RecentJob | null>(null);
@@ -348,7 +351,7 @@ function JobBrowseCard({
           <p className="text-xs text-muted-foreground mt-0.5">
             <span className="font-medium text-foreground">{job.company}</span>
             {job.source && job.source !== job.company ? ` · via ${job.source}` : ""}
-            {job.industry ? ` · ${job.industry}` : ""}
+            {job.role_category ? ` · ${job.role_category}` : ""}
           </p>
         </div>
       </div>

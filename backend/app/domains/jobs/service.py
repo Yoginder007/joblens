@@ -1,9 +1,22 @@
+import time
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.domains.jobs.models import JobBoard
 from app.domains.jobs.repository import JobFilters, JobRepository
 from app.domains.jobs.schemas import JobResponse, JobSearchResponse
+
+# The option catalogue only changes when ingestion runs, but every visitor's
+# filter UI requests it — cache the 9 DISTINCT queries for a few minutes.
+# Ingestion calls ``invalidate_options_cache()`` after each run.
+_OPTIONS_TTL_S = 300.0
+_options_cache: dict = {"at": 0.0, "data": None}
+
+
+def invalidate_options_cache() -> None:
+    _options_cache["data"] = None
+    _options_cache["at"] = 0.0
 
 _SEED_BOARDS = [
     {"name": "amazon.jobs", "label": "Amazon Jobs", "category": "general", "is_premium": False},
@@ -34,7 +47,12 @@ class JobService:
         )
 
     def filter_options(self) -> dict[str, list[str]]:
-        return self.repo.filter_options()
+        now = time.monotonic()
+        if _options_cache["data"] is not None and now - _options_cache["at"] < _OPTIONS_TTL_S:
+            return _options_cache["data"]
+        data = self.repo.filter_options()
+        _options_cache.update(data=data, at=now)
+        return data
 
     def list_boards(self, active_only: bool) -> list[JobBoard]:
         if not self.db.scalar(select(func.count()).select_from(JobBoard)):

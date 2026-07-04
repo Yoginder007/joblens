@@ -22,6 +22,7 @@ class PortalInfo(BaseModel):
     careers_url: str
     live: bool
     ats: str
+    group: str = "global"  # "india" | "global" | "aggregator" — UI grouping
 
 
 class IngestRequest(BaseModel):

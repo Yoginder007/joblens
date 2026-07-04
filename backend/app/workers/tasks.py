@@ -100,16 +100,21 @@ def run_subscriptions(frequency: str) -> dict:
 
 @celery_app.task(name="deactivate_stale_jobs")
 def deactivate_stale_jobs(days_threshold: int = 30) -> dict:
-    from sqlalchemy import update
+    from sqlalchemy import func, update
 
     from app.domains.jobs.models import Job
 
     db = SessionLocal()
     try:
+        # Stale = no scrape has RETURNED the posting in the window (last_seen_at),
+        # not "first scraped long ago" — re-ingested live jobs stay active.
         cutoff = datetime.now(timezone.utc) - timedelta(days=days_threshold)
         result = db.execute(
             update(Job)
-            .where(Job.is_active.is_(True), Job.scraped_at < cutoff)
+            .where(
+                Job.is_active.is_(True),
+                func.coalesce(Job.last_seen_at, Job.scraped_at) < cutoff,
+            )
             .values(is_active=False)
         )
         db.commit()

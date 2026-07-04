@@ -22,6 +22,7 @@ class FilterOptions(BaseModel):
     sources: list[str] = []
     work_models: list[str] = []
     job_types: list[str] = []
+    roles: list[str] = []
 
 
 @router.get("/options", response_model=FilterOptions)
@@ -53,6 +54,7 @@ def search_jobs(
     posted_within_days: int | None = Query(None, ge=1),
     industry: str | None = None,
     job_type: str | None = None,
+    roles: str | None = None,
     sources: str | None = None,
     companies: str | None = None,
     sort_by: str = Query("date"),
@@ -65,7 +67,7 @@ def search_jobs(
         q=q, locations=_csv(location), work_model=work_model, salary_min=salary_min,
         salary_max=salary_max, experience_min=experience_min, experience_max=experience_max,
         posted_within_days=posted_within_days, industry=industry, job_type=job_type,
-        sources=_csv(sources), companies=_csv(companies),
+        role_categories=_csv(roles), sources=_csv(sources), companies=_csv(companies),
     )
     return JobService(db).search(filters, sort_by, include_facets, limit, offset)
 

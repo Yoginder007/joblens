@@ -29,6 +29,7 @@ class JobResponse(BaseModel):
     company_rating: Decimal | None = None
     company_size: str | None = None
     job_type: str | None = None
+    role_category: str | None = None
 
 
 class JobCreate(BaseModel):
@@ -47,6 +48,7 @@ class JobCreate(BaseModel):
     company_rating: Decimal | None = None
     company_size: str | None = None
     job_type: str | None = None
+    role_category: str | None = None
     is_remote: bool = False
 
 
@@ -57,6 +59,7 @@ class FacetCounts(BaseModel):
     job_types: dict[str, int] = {}
     posted_within: dict[str, int] = {}
     sources: dict[str, int] = {}
+    roles: dict[str, int] = {}
 
 
 class JobSearchResponse(BaseModel):

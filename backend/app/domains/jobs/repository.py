@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.domains.jobs.models import Job
 from app.domains.jobs.schemas import FacetCounts
+from app.services.roles import taxonomy_order
 
 # Country → substrings that appear in job locations for that country. Lets a
 # user pick a country as a "location" and get every job there. Keyed lowercase.
@@ -45,6 +46,7 @@ class JobFilters:
     posted_within_days: int | None = None
     industry: str | None = None
     job_type: str | None = None
+    role_categories: list[str] = field(default_factory=list)  # taxonomy buckets (OR)
     sources: list[str] = field(default_factory=list)
     companies: list[str] = field(default_factory=list)
 
@@ -93,20 +95,30 @@ class JobRepository:
             stmt = stmt.where(or_(Job.salary_min <= f.salary_max, Job.salary_min.is_(None)))
         if f.experience_min > 0:
             stmt = stmt.where(Job.required_experience_years >= f.experience_min)
-        if f.experience_max is not None and f.experience_max > 0:
+        # NB: max of 0 is a real filter ("Fresher" — only jobs requiring 0 years),
+        # so only None means "no upper bound".
+        if f.experience_max is not None:
             stmt = stmt.where(Job.required_experience_years <= f.experience_max)
         if f.posted_within_days is not None:
             cutoff = datetime.now(timezone.utc) - timedelta(days=f.posted_within_days)
-            stmt = stmt.where(Job.scraped_at >= cutoff)
+            stmt = stmt.where(self._freshness_col() >= cutoff)
         if f.industry:
             stmt = stmt.where(func.lower(Job.industry) == f.industry.lower())
         if f.job_type:
             stmt = stmt.where(func.lower(Job.job_type) == f.job_type.lower())
+        if f.role_categories:
+            stmt = stmt.where(Job.role_category.in_(f.role_categories))
         if f.sources:
             stmt = stmt.where(func.lower(Job.source).in_([s.lower() for s in f.sources]))
         if f.companies:
             stmt = stmt.where(Job.company.in_(f.companies))
         return stmt
+
+    @staticmethod
+    def _freshness_col():
+        """Freshness = when a scrape last returned the posting; legacy rows
+        (pre-``last_seen_at``) fall back to first-scrape time."""
+        return func.coalesce(Job.last_seen_at, Job.scraped_at)
 
     def count(self, f: JobFilters) -> int:
         stmt = self._apply(select(func.count()).select_from(Job), f)
@@ -117,19 +129,23 @@ class JobRepository:
         if sort_by == "salary":
             stmt = stmt.order_by(Job.salary_max.desc().nullslast())
         elif sort_by == "relevance" and f.q:
-            stmt = stmt.order_by(func.length(Job.title).asc(), Job.scraped_at.desc())
+            # Title hits rank above description-only hits, then freshest first.
+            title_hit = case(
+                (func.lower(Job.title).like(f"%{f.q.lower()}%"), 0), else_=1
+            )
+            stmt = stmt.order_by(title_hit.asc(), self._freshness_col().desc())
         else:
-            stmt = stmt.order_by(Job.scraped_at.desc().nullslast())
+            stmt = stmt.order_by(self._freshness_col().desc())
         return list(self.db.scalars(stmt.offset(offset).limit(limit)))
 
     def recent(self, days: int, source: str | None, location: str | None, limit: int) -> list[Job]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-        stmt = select(Job).where(Job.is_active.is_(True), Job.scraped_at >= cutoff)
+        stmt = select(Job).where(Job.is_active.is_(True), self._freshness_col() >= cutoff)
         if source:
             stmt = stmt.where(Job.source.ilike(f"%{source}%"))
         if location:
             stmt = stmt.where(Job.location.ilike(f"%{location}%"))
-        stmt = stmt.order_by(Job.scraped_at.desc().nullslast()).limit(limit)
+        stmt = stmt.order_by(self._freshness_col().desc()).limit(limit)
         return list(self.db.scalars(stmt))
 
     def eligible(self, candidate_exp: int, f: JobFilters, limit: int) -> list[Job]:
@@ -141,7 +157,7 @@ class JobRepository:
         """
         stmt = self._apply(select(Job), f)
         stmt = stmt.where(Job.required_experience_years <= candidate_exp)
-        stmt = stmt.order_by(Job.scraped_at.desc().nullslast())
+        stmt = stmt.order_by(self._freshness_col().desc())
         return list(self.db.scalars(stmt.limit(limit)))
 
     def nearest(self, embedding, candidate_exp: int, f: JobFilters, limit: int) -> list[tuple[Job, float]]:
@@ -189,9 +205,10 @@ class JobRepository:
 
         # Single pass: one conditional SUM per bucket instead of 5 COUNT queries.
         now = datetime.now(timezone.utc)
+        fresh = self._freshness_col()
         buckets = (("24h", 1), ("3d", 3), ("7d", 7), ("14d", 14), ("30d", 30))
         cols = [
-            func.sum(case((Job.scraped_at >= now - timedelta(days=d), 1), else_=0)).label(label)
+            func.sum(case((fresh >= now - timedelta(days=d), 1), else_=0)).label(label)
             for label, d in buckets
         ]
         row = self.db.execute(self._apply(select(*cols), f)).one()
@@ -204,6 +221,7 @@ class JobRepository:
             job_types=grouped(Job.job_type),
             posted_within=posted,
             sources=grouped(Job.source),
+            roles=grouped(Job.role_category),
         )
 
     # ── Distinct filter options (for UI dropdowns) ───────────────────────────
@@ -231,6 +249,8 @@ class JobRepository:
             "sources": distinct(Job.source),
             "work_models": distinct(Job.work_model),
             "job_types": distinct(Job.job_type),
+            # Taxonomy buckets present in the data, in canonical display order.
+            "roles": taxonomy_order(distinct(Job.role_category)),
         }
 
     # ── Ingestion (race-safe upsert) ─────────────────────────────────────────

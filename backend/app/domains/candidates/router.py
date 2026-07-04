@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.ratelimit import auth_limiter
 from app.domains.candidates.dependencies import CurrentCandidate
 from app.domains.candidates.schemas import (
     AuthResponse,
@@ -17,7 +18,12 @@ router = APIRouter(prefix="/api/candidates", tags=["Candidates"])
 auth_router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 
-@router.post("", response_model=CandidateCreatedResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=CandidateCreatedResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(auth_limiter)],
+)
 def register_candidate(payload: CandidateCreate, db: Session = Depends(get_db)):
     """Guest registration by email — returns a one-time access token (no password)."""
     candidate, token = CandidateService(db).register_or_rotate(payload)
@@ -46,14 +52,19 @@ def _auth_response(candidate, token: str) -> AuthResponse:
     )
 
 
-@auth_router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@auth_router.post(
+    "/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(auth_limiter)],
+)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     """Create a password-backed account and return a session bearer token."""
     candidate, token = CandidateService(db).signup(payload)
     return _auth_response(candidate, token)
 
 
-@auth_router.post("/login", response_model=AuthResponse)
+@auth_router.post("/login", response_model=AuthResponse, dependencies=[Depends(auth_limiter)])
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     """Authenticate with email + password; returns a fresh session bearer token."""
     candidate, token = CandidateService(db).login(payload)
