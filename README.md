@@ -8,10 +8,28 @@
 
 `FastAPI` · `SQLAlchemy 2.0` · `PostgreSQL + pgvector` · `Celery` · `Next.js 16` · `Tailwind v4` · `TypeScript` · `framer-motion`
 
-> ℹ️ The backend runs on a free Render instance that sleeps after ~15 min idle, so
-> the **first request may take ~30–50 s to wake** — subsequent calls are fast.
+> ℹ️ The backend runs on a free Render instance that sleeps after ~15 min idle.
+> Cold starts show an **animated waking screen** while the app retries in the
+> background — content appears by itself once the server is up (~30–50 s), and a
+> scheduled keep-alive ping keeps it warm during the day.
 
 📚 **Docs:** [Architecture](ARCHITECTURE.md) · [API reference](API.md) · [Deployment guide](DEPLOY.md) · [Contributing](CONTRIBUTING.md)
+
+---
+
+## Screenshots
+
+**Browse — LinkedIn-style split view over 675+ live software roles**
+
+![Browse view: job list with sticky detail pane](docs/screenshots/browse.png)
+
+**Adaptive filters — role taxonomy with live counts, removable pills, live result count**
+
+![Advanced filters: role chips with counts and active-filter pills](docs/screenshots/filters.png)
+
+**Match wizard — Amazon-style facets with a live "N jobs match" preview**
+
+![Match wizard preferences: match mode, role chips, experience presets](docs/screenshots/match-wizard.png)
 
 ---
 
@@ -35,18 +53,31 @@
 - **Alias-aware skills.** A canonical normalizer means `JS↔JavaScript`,
   `k8s↔Kubernetes`, `postgres↔PostgreSQL` all count as the same skill, with a
   plain-English "why this matched" explanation per result.
-- **Multi-source ingestion, cost-tiered.** Live job data from Greenhouse/Lever/
-  Amazon public APIs + the Adzuna aggregator (free, refreshed daily) and
-  LinkedIn/Indeed via Apify pay-per-result actors (refreshed weekly and
-  throttled in-app to bound cost) — all normalised behind one schema; every
-  posting keeps a real apply URL.
-- **Browse + filter.** Faceted search with animated dropdowns, multi-select
-  location (incl. whole-country) and company filters, quick experience presets,
-  flip pagination, and a job-detail drawer.
+- **Role taxonomy + tech-only catalogue.** Every title is classified into a
+  12-category software-engineering taxonomy at ingestion (Backend, Frontend,
+  DevOps/SRE, ML/AI, …); non-engineering postings from company boards are
+  dropped at the door. Metadata stays honest — `job_type`/`industry` are only
+  set when the source reports them, never fabricated.
+- **India-focused, multi-source ingestion, cost-tiered.** 11 live Indian ATS
+  boards (Paytm, PhonePe, Meesho, Razorpay, Dream11, Groww, InMobi, …) +
+  India-filtered global MNC boards (Okta, MongoDB, Twilio, Elastic, GitLab, …)
+  via per-portal location allowlists, plus the Adzuna aggregator with
+  company-targeted queries for no-API employers (Flipkart, Swiggy, Zomato, …)
+  and LinkedIn/Indeed via Apify pay-per-result actors (weekly, cost-guarded) —
+  all normalised behind one schema; every posting keeps a real apply URL.
+- **Adaptive, Amazon-style filters.** Role-taxonomy chips and facets with
+  **live result counts**, removable active-filter pills, one-tap experience
+  presets, and a live "N jobs match" preview in the match wizard — options
+  with zero results hide themselves.
 - **Continuous alerts.** Subscribe a résumé and a scheduled worker pushes only
   the *new* matches over time. In the free-tier deploy the schedule is driven
-  by a GitHub Actions cron (nightly catalogue refresh + stale-job cleanup,
-  daily/weekly alert runs) hitting key-protected maintenance endpoints.
+  by a GitHub Actions cron (nightly catalogue refresh + role backfill +
+  stale-job cleanup, daily/weekly alert runs) hitting key-protected
+  maintenance endpoints.
+- **Freshness that tracks reality.** Every re-scrape refreshes a job's
+  `last_seen_at`; date filters and stale-job deactivation key off "still live
+  in the feed", not "first scraped" — long-running postings never falsely age
+  out.
 
 ## Architecture
 
@@ -65,15 +96,16 @@ layer (`core/types.py`) lets the *same* models run on Postgres (prod) and SQLite
 
 ```
 backend/app/
-  core/        config · database · types (GUID/JSONType/Vector) · security · exceptions
+  core/        config · database · types (GUID/JSONType/Vector) · security · ratelimit · exceptions
   domains/<x>/ models · schemas · repository · service · router
-  services/    embedding (pluggable provider) · parsing  (pure, infra-free)
+  services/    embedding (pluggable provider) · parsing · skills · roles (all pure, infra-free)
   workers/     celery app · tasks · beat schedules
+  scripts/     seed_prod · backfill_roles · reembed (also exposed as key-protected endpoints)
   alembic/     migrations own the Postgres schema
 frontend/src/
   app/         pages, theme, icon
-  components/  dropdowns, job cards, filters, drawer, theme provider
-  lib/         api client · session · motion variants · hooks
+  components/  filters (facets + pills) · job cards · wizard · waking screen · drawer
+  lib/         api client (cold-start-aware) · session · backend-status hook · motion
 ```
 
 ## What this project demonstrates
@@ -85,13 +117,16 @@ frontend/src/
   a transparent, weighted scoring function — behind a pluggable provider so
   tests/CI run fully offline on deterministic vectors.
 - **Production thinking:** Alembic-owned schema, env-driven config with a
-  production-secret guard, CORS, bearer-token auth scoping résumé PII, and a
-  memory-aware deploy (API-based embeddings — no torch — for free-tier hosting,
-  with batched, rate-limit-aware re-embedding via a key-protected endpoint).
+  production-secret guard, CORS, bearer-token auth scoping résumé PII, per-IP
+  rate limiting on auth/upload, SSRF-guarded webhook destinations, an async SSE
+  status stream, and a memory-aware deploy (API-based embeddings — no torch —
+  for free-tier hosting, with batched, rate-limit-aware re-embedding and role
+  backfill via key-protected endpoints).
 - **Frontend craft:** a cohesive monochrome dark/light design system (shadcn-ui
   tokens + CSS variables, light by default), real-favicon company avatars,
-  accessible custom comboboxes, live résumé-status streaming (SSE), and
-  purposeful, restrained motion.
+  accessible custom comboboxes, live résumé-status streaming (SSE), a
+  cold-start waking screen with self-retrying fetches, and purposeful,
+  restrained motion.
 
 ## Run locally (no Docker required)
 
@@ -99,7 +134,7 @@ frontend/src/
 # Backend — SQLite + in-process tasks + deterministic embeddings
 cd backend
 pip install -r requirements-dev.txt
-python ../scripts/seed_local.py     # seed real, URL-bearing jobs
+python ../scripts/seed_local.py     # seed real, URL-bearing jobs (free sources; --all adds paid)
 ./run_local.ps1                     # http://localhost:8000/api/docs
 
 # Frontend
