@@ -10,8 +10,7 @@
 
 > ℹ️ The backend runs on a free Render instance that sleeps after ~15 min idle.
 > Cold starts show an **animated waking screen** while the app retries in the
-> background — content appears by itself once the server is up (~30–50 s), and a
-> scheduled keep-alive ping keeps it warm during the day.
+> background — content appears by itself once the server is up (~30–50 s).
 
 📚 **Docs:** [Architecture](ARCHITECTURE.md) · [API reference](API.md) · [Deployment guide](DEPLOY.md) · [Contributing](CONTRIBUTING.md)
 

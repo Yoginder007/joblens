@@ -79,7 +79,29 @@ Keep that connection string for step 2.
   redeploys are faster (jobs persist in Neon).
 - To re-seed manually later: Render **Shell** → `python -m app.scripts.seed_prod`.
 
-## 6. Scraping sources & cost
+## 6. Keeping the free instance warm (optional)
+
+Render free web services sleep after **15 min** idle. Cold starts are already
+handled in-app by `BackendWakingScreen`, so this step is purely a nicety.
+
+**Do not use GitHub Actions for this.** `schedule:` is best-effort and gets
+dropped under load — a `*/10` cron on this repo was delivered ~7–8 times/day
+(median gap **104 min**), far outside the 15 min window, and the flood of
+dispatch requests appeared to delay `maintenance.yml` by 1.5–4 h as well.
+
+Use a dedicated pinger that honours short intervals instead:
+
+1. Sign up at [cron-job.org](https://cron-job.org) (free, 1-min resolution) or
+   [UptimeRobot](https://uptimerobot.com) (free, 5-min).
+2. New job → URL `https://<your-api>.onrender.com/api/health`, method `GET`.
+3. Interval **every 10 min**, restricted to your active hours
+   (e.g. 02:30–18:30 UTC ≈ 08:00–24:00 IST).
+
+Keep the window — don't ping 24/7. Render allows 750 free instance-hours/month;
+round-the-clock is ~720 h and leaves no headroom for a second service or for
+the maintenance runs below. A ~16 h/day window is ~490 h.
+
+## 7. Scraping sources & cost
 
 The catalogue is built from providers on two cadences (GitHub Actions cron):
 
@@ -94,6 +116,14 @@ Trigger manually (header `X-API-Key: <SCRAPER_API_KEY>`):
 - Free: `POST /api/ingest -d '{"background":true,"tier":"free"}'`
 - Paid: `POST /api/ingest -d '{"background":true,"tier":"paid"}'`
   (add `"force":true` to bypass the weekly guard).
+
+> ⏰ Treat those cron times as *earliest*, not exact. GitHub's scheduler has been
+> firing them 1.5–4 h late; the jobs are order-independent and self-wake the
+> instance, so lateness is cosmetic — but the daily alert email lands mid-
+> afternoon IST rather than at 13:30.
+>
+> Scheduled workflows in a **public** repo are auto-disabled after **60 days with
+> no commits**. Push anything (or re-enable them in the Actions tab) to reset it.
 
 ## Troubleshooting
 
